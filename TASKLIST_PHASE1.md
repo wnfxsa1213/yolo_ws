@@ -36,17 +36,19 @@
 ## 🗂️ Sprint 2: 相机模块 (3-4天)
 
 ### 相机接口
-- [ ] `src/vision/camera.py` - CameraInterface抽象类 **P0**
-- [ ] `src/vision/camera.py` - HIKCamera实现类 **P0**
+- [x] `src/vision/camera.py` - CameraInterface抽象类 **P0**
+- [x] `src/vision/camera.py` - AravisCamera实现类 **P0**
+- [x] `src/vision/camera.py` - CameraManager线程抓帧 **P1**
 
 ### 测试工具
-- [ ] `scripts/test_camera.py` - 相机测试脚本 **P0**
+- [x] `scripts/test_camera.py` - 相机测试脚本 **P0**
 - [ ] `scripts/calibrate_camera.py` - 相机标定（可选） **P1**
 
 **Sprint 2 验收**:
 - ✅ 相机稳定采集30+ FPS
 - ✅ 图像格式正确（HxWx3, BGR, uint8）
 - ✅ 相机参数可调整
+- 🧪 `python scripts/test_camera.py --frames 120 --show`
 
 ---
 ---
@@ -54,35 +56,35 @@
 ## 🗂️ Sprint 3: YOLO检测器 (4-5天)
 
 ### C++检测器
-- [ ] `src/algorithms/detector.hpp` - 头文件 **P0**
-- [ ] `src/algorithms/detector.cpp` - 实现文件 **P0**
-  - [ ] TensorRT引擎加载 **P0**
-  - [ ] 图像预处理 **P0**
-  - [ ] 推理执行 **P0**
-  - [ ] 后处理（NMS） **P0**
+- [x] `src/algorithms/detector.hpp` - 头文件 **P0**
+- [x] `src/algorithms/detector.cpp` - 实现文件 **P0**
+  - [x] TensorRT引擎加载 **P0**
+  - [x] 图像预处理 **P0**
+  - [x] 推理执行 **P0**
+  - [x] 后处理（NMS） **P0**
 
 ### 坐标转换
-- [ ] `src/algorithms/coordinate.hpp` - 头文件 **P0**
-- [ ] `src/algorithms/coordinate.cpp` - 实现文件 **P0**
-  - [ ] 像素→相机坐标 **P0**
-  - [ ] 相机坐标→云台角度 **P0**
+- [x] `src/algorithms/coordinate.hpp` - 头文件 **P0**
+- [x] `src/algorithms/coordinate.cpp` - 实现文件 **P0**
+  - [x] 像素→相机坐标 **P0**
+  - [x] 相机坐标→云台角度 **P0**
   - [ ] 畸变校正（可选） **P1**
 
 ### Python绑定
-- [ ] `src/algorithms/bindings.cpp` - pybind11绑定 **P0**
-- [ ] NumPy数组转换 **P0**
+- [x] `src/algorithms/bindings.cpp` - pybind11绑定 **P0**
+- [x] NumPy数组转换 **P0**
 
 ### 构建系统
-- [ ] `src/algorithms/CMakeLists.txt` - CMake配置 **P0**
-  - [ ] CUDA工具链 **P0**
-  - [ ] TensorRT链接 **P0**
-  - [ ] OpenCV链接 **P0**
-  - [ ] pybind11配置 **P0**
+- [x] `src/algorithms/CMakeLists.txt` - CMake配置 **P0**
+  - [x] CUDA工具链 **P0**
+  - [x] TensorRT链接 **P0**
+  - [x] OpenCV链接 **P0**
+  - [x] pybind11配置 **P0**
 
 ### 模型工具
-- [ ] `scripts/export_onnx.py` - PyTorch→ONNX **P1**
-- [ ] `scripts/build_engine.py` - ONNX→TensorRT **P0**
-- [ ] `scripts/benchmark.py` - 性能测试 **P1**
+- [x] `scripts/export_onnx.py` - PyTorch→ONNX **P1**
+- [x] `scripts/build_engine.py` - ONNX→TensorRT **P0**
+- [x] `scripts/benchmark.py` - 性能测试 **P1**
 
 **Sprint 4 验收**:
 - ✅ YOLO推理成功
@@ -90,7 +92,7 @@
 - ✅ Python调用正常
 
 ---
-## 🗂️ Sprint 4: 串口通信 (3天)
+## 🗂️ Sprint 4: 串口通信 (2天)
 
 ### 协议层
 - [ ] `src/serial_comm/protocol.py` - ProtocolEncoder **P0**
@@ -152,16 +154,16 @@
 
 ### 按优先级
 ```
-P0任务 (必须): [ ] 4/23 (17%)
-P1任务 (应该): [ ] 3/13 (23%)
+P0任务 (必须): [ ] 25/45 (56%)
+P1任务 (应该): [ ] 4/11 (36%)
 P2任务 (可选): [ ] 12/12 (0%)
 ```
 
 ### 按Sprint
 ```
 Sprint 1: [x] 7/7   (100%)
-Sprint 2: [ ] 0/4   (0%)
-Sprint 3: [ ] 0/9   (0%)
+Sprint 2: [ ] 3/4   (75%)
+Sprint 3: [x] 9/9   (100%)
 Sprint 4: [ ] 0/16  (0%)
 Sprint 5: [ ] 0/12  (0%)
 ```
@@ -210,12 +212,23 @@ Sprint 5: [ ] 0/12  (0%)
 ## 📝 开发笔记
 
 ### 遇到的问题
+- 原始配置把相机强行写成 640×640 + 旋转，可视化时画面扭曲、帧率下滑
+- YOLO 推理单线程串行，CPU 预处理+后处理占用大，Python 测到 20ms 以上
+- TensorRT 插件 `explicit_nms` 在新版 Ultralytics 已废弃，导出脚本报错
 
 
 ### 解决方案
+- 恢复相机出厂参数，统一在 `camera_config.yaml` 里管理分辨率/像素格式；测试脚本默认不再强制 resize/rotate
+- 用 `trtexec` 校准纯推理耗时 (~4ms)，确认瓶颈在 Python 侧；更新任务清单加入多线程、GPU 预/后处理优化
+- 更新 `export_onnx.py`，去掉废弃参数；配套安装匹配的 `torchvision`，重新构建 ONNX/TensorRT 引擎
 
 
 ### 待优化项
+
+- [ ] 多线程流水线：采集/推理/可视化分离，降低串行阻塞
+- [ ] TensorRT 异步（CUDA Streams）压榨 GPU 并发
+- [ ] 预处理搬到 TensorRT/CUDA 插件，减少 CPU 负担
+- [ ] 使用 EfficientNMS/GPU NMS，避免 CPU 循环后处理
 
 
 ---

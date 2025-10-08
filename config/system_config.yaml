@@ -14,7 +14,7 @@ logging:
   max_bytes: 10485760
 
 camera:
-  type: "hikvision"
+  type: "aravis"
   config_path: "config/camera_config.yaml"
   intrinsics_path: "config/camera_intrinsics.yaml"
   resolution: [1920, 1080]

@@ -56,7 +56,9 @@ src/
 ```python
 async def main():
     # 1. 初始化所有模块
-    camera = HIKCamera()
+    from utils.config import ConfigManager
+    camera_cfg = ConfigManager("config/camera_config.yaml").get("aravis")
+    camera = AravisCamera(camera_cfg)
     detector = YOLODetector(engine_path)
     tracker = ByteTracker()
     coord_trans = CoordinateTransformer(intrinsics)
@@ -105,8 +107,9 @@ async def main():
 cd src/algorithms
 mkdir -p build && cd build
 cmake ..
-make -j$(nproc)
-# 输出: algorithms.cpython-310-aarch64-linux-gnu.so
+cmake --build . -j$(nproc)
+cmake --install .
+# 输出: detection_core*.so 安装到项目根目录
 ```
 
 ### 运行主程序

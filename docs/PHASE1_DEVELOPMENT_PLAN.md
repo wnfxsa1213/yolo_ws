@@ -77,7 +77,7 @@
 ---
 
 ### Sprint 2: 相机模块开发 (3-4天)
-**目标：** 完成相机接口和海康相机驱动
+**目标：** 完成相机接口和 Aravis GigE 驱动
 
 #### 任务清单
 
@@ -87,10 +87,11 @@
   - 定义`open()`, `close()`, `capture()`, `get_intrinsics()`方法
   - 添加完整的docstring文档
 
-**2.2 海康相机实现**
-- [ ] `src/vision/camera.py` - HIKCamera类
-  - 实现相机初始化（使用MVS SDK）
+**2.2 Aravis 相机实现**
+- [ ] `src/vision/camera.py` - AravisCamera类
+  - 实现相机初始化（PyGObject + Aravis）
   - 实现图像采集（连续采集模式）
+  - 支持Bayer→BGR转换
   - 实现参数配置（曝光、增益等）
   - 实现异常处理（相机断开、采集超时）
   - 添加日志记录（使用logger）
@@ -286,7 +287,7 @@ Sprint 1: 基础设施
   └─ system_config.yaml
 
 Sprint 2: 相机模块
-  ├─ camera.py (CameraInterface + HIKCamera)
+  ├─ camera.py (CameraInterface + AravisCamera)
   └─ test_camera.py
 
 Sprint 3: 串口通信

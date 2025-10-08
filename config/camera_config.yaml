@@ -1,27 +1,22 @@
-hikvision:
-  exposure_time: 8000        # μs
-  gain: 6.0
-  gamma: 1.0
-  sharpness: 128
-  black_level: 0
-  trigger_mode: "off"
-  trigger_source: "Line0"
-  pixel_format: "RGB8"
-  balance_ratio:
-    red: 1.2
-    green: 1.0
-    blue: 1.4
-  resolution:
-    width: 1920
-    height: 1080
-  fps: 60
+aravis:
+  device_id: null            # 传None默认选择第一个设备
+  pixel_format: "BayerRG8"   # 参考 arv-tool-0.8 输出
+  width: 640
+  height: 640
+  packet_size: 9000          # jumbo frame
+  packet_delay: 1000
+  exposure_us: 8000
+  gain_db: 6.0
+  auto_exposure: false
+  auto_gain: false
+  stream_buffer_count: 8
 
 network:
-  ip: "192.168.1.10"
-  subnet_mask: "255.255.255.0"
-  gateway: "192.168.1.1"
+  interface: "enP8p1s0"
+  host_ip: "192.168.100.1"
+  camera_ip: "192.168.100.10"
+  mtu: 9000
 
-stream:
-  packet_size: 1500
-  packet_delay: 0
-  buffer_size_mb: 128
+notes:
+  - "使用 arv-tool-0.8 gvcp discover 校验设备"
+  - "若像素格式不是 BayerRG8，更新 pixel_format 并调整处理逻辑"

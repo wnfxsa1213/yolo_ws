@@ -180,38 +180,22 @@ EOF
 # ============================================================
 ```
 
-### 1.5 海康相机SDK安装
+### 1.5 Aravis 环境安装
 
 ```bash
-# 1. 下载海康MVS Python SDK
-# 访问: https://www.hikrobotics.com/cn/machinevision/service/download
-# 下载 "MVS Python版本" for Linux ARM64
-
-# 2. 解压
-tar -xvf MVS-*-Python-*-aarch64.tar.gz
-cd MVS-*-Python-*-aarch64/
-
-# 3. 安装运行时依赖
-sudo apt install -y libusb-1.0-0-dev
-
-# 4. 运行安装脚本
-sudo ./install.sh
-
-# 5. 添加USB规则（重要！）
-sudo cp -r /opt/MVS/bin/udevrules/* /etc/udev/rules.d/
-sudo udevadm control --reload-rules && sudo udevadm trigger
-
-# 6. 将当前用户添加到video组
-sudo usermod -aG video $USER
-
-# 7. 重新登录或重启
-
-# 8. 测试相机
-cd /opt/MVS/Samples/aarch64/Python/MvImport/
-python MvCameraControl_class.py
-
-# 如果能看到相机列表，说明安装成功
+sudo apt update
+sudo apt install -y     libaravis-0.8-0     libaravis-0.8-dev     gir1.2-aravis-0.8     aravis-tools     python3-gi     python3-opencv
 ```
+
+> PyAravis 通过 PyGObject 暴露，确保虚拟环境使用 `--system-site-packages` 继承这些依赖。
+
+快速自检：
+
+```bash
+python -c "import gi; gi.require_version('Aravis', '0.8'); from gi.repository import Aravis; print('Aravis OK')"
+```
+
+可选：安装 `arv-viewer-0.8` 做图形化调试。
 
 ### 1.6 TensorRT环境验证
 
@@ -254,11 +238,9 @@ yolo_ws/
 ├── src/                        # 源代码
 │   ├── __init__.py
 │   │
-│   ├── camera/                 # 相机模块 (Python)
+│   ├── vision/                 # 视觉模块 (Python)
 │   │   ├── __init__.py
-│   │   ├── hik_camera.py       # 海康SDK封装
-│   │   ├── camera_interface.py # 抽象接口
-│   │   └── calibration.py      # 相机标定
+│   │   └── camera.py           # Aravis GigE 实现 + 接口
 │   │
 │   ├── detection/              # 检测模块 (C++核心)
 │   │   ├── CMakeLists.txt
@@ -328,10 +310,10 @@ yolo_ws/
 模块职责 (遵循SOLID原则)
 """
 
-# 1. camera/ - 单一职责: 图像采集
-#    - 封装海康SDK
-#    - 提供统一Camera接口
-#    - 处理图像格式转换
+# 1. vision/ - 单一职责: 图像采集
+#    - 基于 Aravis 的 GigE 驱动
+#    - 提供统一 CameraInterface + CameraManager
+#    - 处理 Bayer → BGR 转换
 
 # 2. detection/ - 单一职责: 目标检测与追踪
 #    - C++实现核心算法 (性能优化)
@@ -412,316 +394,51 @@ class CameraInterface(ABC):
         pass
 ```
 
-#### 3.1.2 海康相机实现
+#### 3.1.2 Aravis 相机实现
 
 ```python
-# src/camera/hik_camera.py
-import sys
-sys.path.append("/opt/MVS/Samples/aarch64/Python/MvImport")
+# src/vision/camera.py (节选)
+import gi
+gi.require_version("Aravis", "0.8")
+from gi.repository import Aravis
 
-from MvCameraControl_class import *
-from camera_interface import CameraInterface
-import numpy as np
-import time
-from typing import Tuple, Optional
-
-class HIKCamera(CameraInterface):
-    """海康威视工业相机封装"""
-
-    def __init__(self, config_path: str = None):
-        """
-        初始化相机
-
-        Args:
-            config_path: 配置文件路径 (YAML)
-        """
-        self.camera = MvCamera()
-        self.device_list = None
-        self.is_opened = False
-        self.config = self._load_config(config_path)
-
-        # 图像缓冲区
-        self.frame_buffer = None
-        self.buffer_size = 0
-
-    def _load_config(self, config_path: str) -> dict:
-        """加载配置文件"""
-        if config_path:
-            import yaml
-            with open(config_path, 'r') as f:
-                return yaml.safe_load(f)
-        else:
-            # 默认配置
-            return {
-                'width': 1920,
-                'height': 1080,
-                'fps': 30,
-                'exposure': 10000,  # 10ms
-                'gain': 5.0,
-                'pixel_format': 'RGB'
-            }
-
+class AravisCamera(CameraInterface):
     def open(self) -> bool:
-        """打开相机"""
-        try:
-            # 1. 枚举设备
-            device_list = MV_CC_DEVICE_INFO_LIST()
-            ret = MvCamera.MV_CC_EnumDevices(
-                MV_GIGE_DEVICE | MV_USB_DEVICE,
-                device_list
-            )
-
-            if ret != 0:
-                print(f"[ERROR] 枚举设备失败! ret=0x{ret:x}")
-                return False
-
-            if device_list.nDeviceNum == 0:
-                print("[ERROR] 未找到相机设备")
-                return False
-
-            print(f"[INFO] 找到 {device_list.nDeviceNum} 个相机")
-
-            # 2. 选择第一个设备
-            self.device_list = device_list
-            ret = self.camera.MV_CC_CreateHandle(
-                device_list.pDeviceInfo[0]
-            )
-
-            if ret != 0:
-                print(f"[ERROR] 创建句柄失败! ret=0x{ret:x}")
-                return False
-
-            # 3. 打开设备
-            ret = self.camera.MV_CC_OpenDevice(MV_ACCESS_Exclusive, 0)
-            if ret != 0:
-                print(f"[ERROR] 打开设备失败! ret=0x{ret:x}")
-                return False
-
-            # 4. 配置相机参数
-            self._configure_camera()
-
-            # 5. 开始取流
-            ret = self.camera.MV_CC_StartGrabbing()
-            if ret != 0:
-                print(f"[ERROR] 开始取流失败! ret=0x{ret:x}")
-                return False
-
-            self.is_opened = True
-            print("[INFO] 相机打开成功")
-            return True
-
-        except Exception as e:
-            print(f"[ERROR] 打开相机异常: {e}")
-            return False
-
-    def _configure_camera(self):
-        """配置相机参数"""
-        # 设置像素格式 (RGB8)
-        ret = self.camera.MV_CC_SetEnumValue("PixelFormat",
-                                            PixelType_Gvsp_RGB8_Packed)
-
-        # 设置分辨率
-        ret = self.camera.MV_CC_SetIntValue("Width", self.config['width'])
-        ret = self.camera.MV_CC_SetIntValue("Height", self.config['height'])
-
-        # 设置帧率
-        ret = self.camera.MV_CC_SetFloatValue("AcquisitionFrameRate",
-                                              self.config['fps'])
-
-        # 设置曝光时间（自动/手动）
-        ret = self.camera.MV_CC_SetEnumValue("ExposureAuto",
-                                            MV_EXPOSURE_AUTO_MODE_OFF)
-        ret = self.camera.MV_CC_SetFloatValue("ExposureTime",
-                                              self.config['exposure'])
-
-        # 设置增益
-        ret = self.camera.MV_CC_SetEnumValue("GainAuto",
-                                            MV_GAIN_MODE_OFF)
-        ret = self.camera.MV_CC_SetFloatValue("Gain",
-                                              self.config['gain'])
-
-        # 分配缓冲区
-        stParam = MVCC_INTVALUE()
-        ret = self.camera.MV_CC_GetIntValue("PayloadSize", stParam)
-        self.buffer_size = stParam.nCurValue
-        self.frame_buffer = (c_ubyte * self.buffer_size)()
-
-        print(f"[INFO] 相机配置: {self.config['width']}x{self.config['height']} @ {self.config['fps']}fps")
-
-    def capture(self) -> Tuple[Optional[np.ndarray], int]:
-        """采集一帧图像"""
-        if not self.is_opened:
-            return None, 0
-
-        try:
-            # 获取一帧图像
-            stFrameInfo = MV_FRAME_OUT_INFO_EX()
-            ret = self.camera.MV_CC_GetOneFrameTimeout(
-                self.frame_buffer,
-                self.buffer_size,
-                stFrameInfo,
-                1000  # 1秒超时
-            )
-
-            if ret != 0:
-                print(f"[WARN] 获取图像失败! ret=0x{ret:x}")
-                return None, 0
-
-            # 转换为numpy数组
-            image_data = np.frombuffer(
-                self.frame_buffer,
-                count=int(stFrameInfo.nWidth * stFrameInfo.nHeight * 3),
-                dtype=np.uint8
-            )
-
-            # Reshape为图像格式 (H, W, 3)
-            image = image_data.reshape(
-                (stFrameInfo.nHeight, stFrameInfo.nWidth, 3)
-            )
-
-            # RGB → BGR (OpenCV格式)
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-
-            # 时间戳 (毫秒)
-            timestamp = int(time.time() * 1000)
-
-            return image, timestamp
-
-        except Exception as e:
-            print(f"[ERROR] 采集图像异常: {e}")
-            return None, 0
-
-    def close(self) -> None:
-        """关闭相机"""
-        if self.is_opened:
-            self.camera.MV_CC_StopGrabbing()
-            self.camera.MV_CC_CloseDevice()
-            self.camera.MV_CC_DestroyHandle()
-            self.is_opened = False
-            print("[INFO] 相机已关闭")
-
-    def get_intrinsics(self) -> dict:
-        """
-        获取相机内参
-        注意: 需要先进行相机标定
-        """
-        # 从配置文件读取或使用默认值
-        return self.config.get('intrinsics', {
-            'fx': 1000.0,  # 焦距x
-            'fy': 1000.0,  # 焦距y
-            'cx': self.config['width'] / 2,   # 光心x
-            'cy': self.config['height'] / 2,  # 光心y
-        })
-
-    def set_exposure(self, exposure_us: int) -> bool:
-        """设置曝光时间（微秒）"""
-        ret = self.camera.MV_CC_SetFloatValue("ExposureTime", exposure_us)
-        return ret == 0
-
-    def set_gain(self, gain: float) -> bool:
-        """设置增益"""
-        ret = self.camera.MV_CC_SetFloatValue("Gain", gain)
-        return ret == 0
-
-    def __del__(self):
-        """析构函数"""
-        self.close()
-```
-
-#### 3.1.3 相机管理器 (支持多相机)
-
-```python
-# src/camera/camera_manager.py
-from typing import List, Optional
-from camera_interface import CameraInterface
-import threading
-import queue
-
-class CameraManager:
-    """相机管理器 (支持多相机并发采集)"""
-
-    def __init__(self):
-        self.cameras: List[CameraInterface] = []
-        self.is_running = False
-        self.threads: List[threading.Thread] = []
-        self.frame_queues: List[queue.Queue] = []
-
-    def add_camera(self, camera: CameraInterface) -> int:
-        """
-        添加相机
-
-        Returns:
-            camera_id: 相机索引
-        """
-        self.cameras.append(camera)
-        self.frame_queues.append(queue.Queue(maxsize=2))
-        return len(self.cameras) - 1
-
-    def start_all(self) -> bool:
-        """启动所有相机"""
-        for camera in self.cameras:
-            if not camera.open():
-                print("[ERROR] 启动相机失败")
-                return False
-
-        self.is_running = True
-
-        # 为每个相机创建采集线程
-        for i, camera in enumerate(self.cameras):
-            thread = threading.Thread(
-                target=self._capture_loop,
-                args=(camera, self.frame_queues[i]),
-                daemon=True
-            )
-            thread.start()
-            self.threads.append(thread)
-
+        Aravis.enable_interface("gige")
+        self._camera = Aravis.Camera.new(self.config.device_id)
+        self._stream = self._camera.create_stream(None, None)
+        for _ in range(self.config.stream_buffer_count):
+            buf = Aravis.Buffer.new_allocate(self._camera.get_payload())
+            self._stream.push_buffer(buf)
+        self._camera.start_acquisition()
         return True
 
-    def _capture_loop(self, camera: CameraInterface, frame_queue: queue.Queue):
-        """相机采集循环 (在独立线程中运行)"""
-        while self.is_running:
-            image, timestamp = camera.capture()
-            if image is not None:
-                # 非阻塞放入队列，满了则丢弃旧帧
-                try:
-                    frame_queue.put_nowait((image, timestamp))
-                except queue.Full:
-                    # 队列满，丢弃旧帧
-                    try:
-                        frame_queue.get_nowait()
-                        frame_queue.put_nowait((image, timestamp))
-                    except:
-                        pass
-
-    def get_frame(self, camera_id: int = 0, timeout: float = 1.0):
-        """
-        获取最新一帧
-
-        Args:
-            camera_id: 相机索引
-            timeout: 超时时间（秒）
-
-        Returns:
-            (image, timestamp) or (None, 0)
-        """
-        try:
-            return self.frame_queues[camera_id].get(timeout=timeout)
-        except queue.Empty:
-            return None, 0
-
-    def stop_all(self):
-        """停止所有相机"""
-        self.is_running = False
-
-        # 等待线程结束
-        for thread in self.threads:
-            thread.join(timeout=2.0)
-
-        # 关闭相机
-        for camera in self.cameras:
-            camera.close()
+    def capture(self, timeout: float = 0.5):
+        buffer = self._stream.pop_buffer(int(timeout * 1_000_000))
+        data = buffer.get_data()
+        frame = np.frombuffer(data, dtype=np.uint8)
+        image = self._post_process(frame)
+        self._stream.push_buffer(buffer)
+        return image, time.time() * 1000
 ```
+
+> 关键差异：不再依赖海康 MVS SDK，采用开源 Aravis，直接通过 `sudo apt install libaravis-0.8-dev gir1.2-aravis-0.8 aravis-tools python3-gi` 即可部署。
+> - 支持 Bayer→BGR 转换（需要 OpenCV）
+> - 支持设置 `GevSCPSPacketSize` / `GevSCPD`，保持千兆链路满载
+> - `config/camera_config.yaml` 新增 `aravis` 节点，使用 `arv-tool-0.8` 参数同步
+
+#### 3.1.3 CameraManager (多相机)
+
+`CameraManager` 仍负责线程抓帧，不过实现挪到了 `src/vision/camera.py`：
+
+```python
+manager = CameraManager()
+manager.add_camera(AravisCamera(cfg))
+manager.start_all()
+frame, timestamp = manager.get_frame(timeout=1.0)
+```
+
+队列只保留最新帧，避免检测模块被旧数据拖累；停止时记得 `manager.stop_all()` 释放资源。
 
 ### 3.2 串口通信模块
 
@@ -1551,8 +1268,7 @@ from pathlib import Path
 # 添加项目路径
 sys.path.insert(0, str(Path(__file__).parent))
 
-from camera.hik_camera import HIKCamera
-from camera.camera_manager import CameraManager
+from vision.camera import AravisCamera, CameraManager
 from control.serial_comm import SerialController, SerialConfig
 from control.protocol import *
 from utils.logger import setup_logger
@@ -1592,7 +1308,8 @@ class TargetTracker:
 
             # 1. 初始化相机
             logger.info("初始化相机...")
-            camera = HIKCamera(self.config['camera']['config_path'])
+            camera_cfg = load_config(self.config['camera']['config_path'])['aravis']
+            camera = AravisCamera(camera_cfg)
             camera_id = self.camera_manager.add_camera(camera)
 
             if not self.camera_manager.start_all():
@@ -1811,12 +1528,11 @@ if __name__ == '__main__':
 ```yaml
 # config/system_config.yaml
 camera:
+  type: "aravis"
   config_path: "config/camera_config.yaml"
-  intrinsics:
-    fx: 1000.0
-    fy: 1000.0
-    cx: 960.0
-    cy: 540.0
+  intrinsics_path: "config/camera_intrinsics.yaml"
+  resolution: [1920, 1080]
+  fps: 60
 
 model:
   engine_path: "models/yolov8n.engine"
@@ -1849,12 +1565,14 @@ debug:
 # tests/test_camera.py
 import pytest
 import numpy as np
-from src.vision.camera import HIKCamera
+from src.vision.camera import AravisCamera
 
 @pytest.fixture
 def camera():
     """相机fixture"""
-    cam = HIKCamera()
+    from utils.config import ConfigManager
+    cfg = ConfigManager("config/camera_config.yaml").get("aravis")
+    cam = AravisCamera(cfg)
     cam.open()
     yield cam
     cam.close()
@@ -1876,11 +1594,13 @@ def test_camera_intrinsics(camera):
     assert required_keys.issubset(intrinsics.keys()), "内参缺少必要字段"
     assert all(v > 0 for v in intrinsics.values()), "内参值无效"
 
+from src.vision.camera import CameraError
+
 def test_camera_error_handling():
     """测试错误处理"""
-    with pytest.raises(RuntimeError):
-        cam = HIKCamera()
-        cam.capture()  # 未打开相机应该抛出异常
+    cam = AravisCamera({"device_id": "invalid"})
+    with pytest.raises(CameraError):
+        cam.open()
 ```
 
 #### 8.1.2 检测器测试
@@ -2562,22 +2282,22 @@ while is_running:
 
 | 问题现象 | 可能原因 | 解决方案 |
 |---------|---------|---------|
-| `camera.capture()` 返回 None | 相机未正确初始化 | 检查 MVS SDK 安装，运行 `MVS` 测试相机 |
-| 图像帧率低于预期 | USB带宽不足 | 切换到USB 3.0接口，降低分辨率或帧率 |
-| 图像曝光异常 | 自动曝光未收敛 | 在相机配置中设置固定曝光时间 |
-| 间歇性丢帧 | CPU负载过高 | 降低图像分辨率，使用专用线程采集 |
-| `ImportError: libMvCameraControl.so` | SDK环境变量未设置 | 添加到 `.bashrc`：`export LD_LIBRARY_PATH=/opt/MVS/lib:$LD_LIBRARY_PATH` |
+| `camera.capture()` 返回 None | Aravis 找不到设备 | 运行 `arv-tool-0.8 gvcp discover` 检查设备ID与IP |
+| 图像帧率低于预期 | Jumbo Frame 未启用 | `sudo ip link set enP8p1s0 mtu 9000` 并在配置中设置 `packet_size` |
+| 图像曝光异常 | 自动曝光开启/参数不当 | 编辑 `config/camera_config.yaml` 调整 `auto_exposure` / `exposure_us` |
+| 间歇性丢帧 | CPU/GPU 过载或网卡缓存不足 | 减少分辨率、调整 `stream_buffer_count`、检查系统负载 |
+| `ImportError: gi.repository.Aravis` | 缺少 PyGObject 依赖 | 安装 `sudo apt install gir1.2-aravis-0.8 python3-gi` |
 
 **调试命令：**
 ```bash
-# 查看USB设备
-lsusb | grep -i hikvision
+# 探测 GigE 设备
+arv-tool-0.8 gvcp discover
 
-# 测试相机连接
-python -c "from src.vision.camera import HIKCamera; cam = HIKCamera(); cam.open(); print('OK')"
+# 读取设备寄存器示例
+arv-tool-0.8 control --get PixelFormat
 
-# 检查SDK版本
-cat /opt/MVS/Readme.txt
+# 快速自检 (需物理相机)
+python scripts/test_camera.py --frames 30
 ```
 
 ### 10.2 TensorRT相关问题
@@ -2932,7 +2652,7 @@ sudo fuser -v /dev/nvidia* | awk '{print $2}' | xargs -r sudo kill -9
 - [NVIDIA Jetson官方文档](https://docs.nvidia.com/jetson/)
 - [TensorRT开发者指南](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/)
 - [Ultralytics YOLOv8文档](https://docs.ultralytics.com/)
-- [海康威视MVS SDK](https://www.hikrobotics.com/cn/machinevision/service/download)
+- [Aravis Project](https://github.com/AravisProject/aravis)
 
 #### D.2 社区资源
 

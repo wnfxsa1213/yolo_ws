@@ -572,7 +572,7 @@ yolo_ws/
 │   │
 │   ├── camera/                 # 相机模块 (Python)
 │   │   ├── __init__.py
-│   │   ├── hik_camera.py       # 海康SDK封装
+│   │   └── camera.py           # Aravis GigE 驱动
 │   │   └── camera_manager.py   # 相机管理
 │   │
 │   ├── detection/              # 检测模块 (C++)

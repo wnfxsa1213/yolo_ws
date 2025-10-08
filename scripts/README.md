@@ -6,7 +6,7 @@
 
 ## 待实现脚本
 
-### export_onnx.py
+### export_onnx.py ✅
 **功能：** 将PyTorch模型导出为ONNX格式
 
 **用法：**
@@ -21,7 +21,7 @@ python scripts/export_onnx.py \
 
 ---
 
-### build_engine.py
+### build_engine.py ✅
 **功能：** 将ONNX模型转换为TensorRT引擎
 
 **用法：**
@@ -44,22 +44,22 @@ python scripts/build_engine.py \
 
 ---
 
-### test_camera.py
-**功能：** 测试海康相机连接和图像采集
+### test_camera.py ✅
+**功能：** 使用 Aravis 采集 GigE 图像，验证帧率与参数。
 
 **用法：**
 ```bash
 python scripts/test_camera.py \
     --config config/camera_config.yaml \
-    --save-image \
-    --num-frames 10
+    --frames 60 \
+    --show \
+    --save-dir logs/camera_test
 ```
 
-**功能：**
-- 检测相机连接状态
-- 采集指定数量的图像帧
-- 显示帧率和分辨率
-- 保存测试图像到 `logs/camera_test/`
+**特性：**
+- 直接读取 `config/camera_config.yaml` 的 `aravis` 配置
+- 打印帧信息与 FPS
+- 可选保存 PNG、OpenCV 窗口预览
 
 ---
 
@@ -83,7 +83,7 @@ python scripts/test_serial.py \
 
 ---
 
-### benchmark.py
+### benchmark.py ✅
 **功能：** 性能基准测试
 
 **用法：**
@@ -142,4 +142,5 @@ bash scripts/deploy.sh
 ---
 
 ## 状态
-⏳ 所有脚本待实现
+- ✅ test_logger.py / test_config.py / test_camera.py / export_onnx.py / build_engine.py / benchmark.py
+- ⏳ 其余脚本待实现
