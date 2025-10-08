@@ -1,0 +1,27 @@
+hikvision:
+  exposure_time: 8000        # μs
+  gain: 6.0
+  gamma: 1.0
+  sharpness: 128
+  black_level: 0
+  trigger_mode: "off"
+  trigger_source: "Line0"
+  pixel_format: "RGB8"
+  balance_ratio:
+    red: 1.2
+    green: 1.0
+    blue: 1.4
+  resolution:
+    width: 1920
+    height: 1080
+  fps: 60
+
+network:
+  ip: "192.168.1.10"
+  subnet_mask: "255.255.255.0"
+  gateway: "192.168.1.1"
+
+stream:
+  packet_size: 1500
+  packet_delay: 0
+  buffer_size_mb: 128

@@ -1,0 +1,75 @@
+project:
+  name: "target-tracker"
+  version: "0.1.0"
+  description: "Jetson Orin NX Super 智能云台追踪系统"
+  log_level: "INFO"
+
+logging:
+  log_dir: "logs"
+  file_name: "system.log"
+  rotation: "time"         # time / size
+  when: "midnight"
+  interval: 1
+  backup_count: 7
+  max_bytes: 10485760
+
+camera:
+  type: "hikvision"
+  config_path: "config/camera_config.yaml"
+  intrinsics_path: "config/camera_intrinsics.yaml"
+  resolution: [1920, 1080]
+  fps: 60
+
+model:
+  engine_path: "models/yolov8n_fp16.engine"
+  input_size: [640, 640]
+  conf_threshold: 0.5
+  nms_threshold: 0.45
+  classes: [0]
+
+serial:
+  port: "/dev/ttyTHS0"
+  baudrate: 460800
+  bytesize: 8
+  parity: "N"
+  stopbits: 1
+  timeout: 0.1
+  reconnect_interval: 1.0
+  heartbeat_interval: 0.5
+
+control:
+  pitch:
+    max_velocity: 150.0
+    max_accel: 300.0
+    limits: [-90.0, 90.0]
+  yaw:
+    max_velocity: 200.0
+    max_accel: 300.0
+    limits: [-180.0, 180.0]
+  smoothing:
+    alpha: 0.6
+    deadband_deg: 0.2
+
+tracking:
+  enable: true
+  max_lost_frames: 20
+  min_confidence: 0.6
+  smoothing_window: 5
+  priority: "center_distance"
+
+performance:
+  enable_gpu_preprocess: true
+  num_cuda_streams: 2
+  use_threading: true
+  buffer_pool_size: 10
+
+debug:
+  show_image: false
+  save_detections: false
+  print_fps: true
+  profile_performance: false
+
+paths:
+  recordings_dir: "logs/recordings"
+  detections_dir: "logs/detections"
+  profiler_report: "logs/perf_report.txt"
