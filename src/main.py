@@ -343,9 +343,10 @@ def run_pipeline(args: argparse.Namespace) -> None:
     last_status_log = 0.0
     latest_pitch = 0.0
     latest_yaw = 0.0
-    target_lost_frames = 0
+    target_lost_frames = max_lost_frames + 1  # 启动视为“无目标”状态
     last_valid_pitch = 0.0
     last_valid_yaw = 0.0
+    first_target_acquired = False
 
     try:
         while running:
@@ -385,20 +386,25 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 )
                 last_valid_pitch, last_valid_yaw = pitch_raw, yaw_raw
                 target_lost_frames = 0
+                first_target_acquired = True
                 has_target = True
             else:
-                target_lost_frames += 1
                 has_target = False
-                if target_lost_frames <= max_lost_frames:
-                    pitch_raw, yaw_raw = last_valid_pitch, last_valid_yaw
+                if not first_target_acquired:
+                    pitch_raw, yaw_raw = 0.0, 0.0
                 else:
-                    last_valid_pitch *= return_damping
-                    last_valid_yaw *= return_damping
-                    if abs(last_valid_pitch) < return_deadband:
-                        last_valid_pitch = 0.0
-                    if abs(last_valid_yaw) < return_deadband:
-                        last_valid_yaw = 0.0
-                    pitch_raw, yaw_raw = last_valid_pitch, last_valid_yaw
+                    target_lost_frames += 1
+                    if target_lost_frames <= max_lost_frames:
+                        pitch_raw, yaw_raw = last_valid_pitch, last_valid_yaw
+                    else:
+                        decay_steps = target_lost_frames - max_lost_frames
+                        decay_factor = return_damping ** decay_steps
+                        pitch_raw = last_valid_pitch * decay_factor
+                        yaw_raw = last_valid_yaw * decay_factor
+                        if abs(pitch_raw) < return_deadband:
+                            pitch_raw = 0.0
+                        if abs(yaw_raw) < return_deadband:
+                            yaw_raw = 0.0
 
             filtered_pitch, filtered_yaw, should_send = smoother.update(
                 pitch_raw, yaw_raw, now
