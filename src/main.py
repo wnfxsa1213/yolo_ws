@@ -87,7 +87,7 @@ class CommandSmoother:
     def _clamp(value: float, low: float, high: float) -> float:
         return max(low, min(high, value))
 
-    def _step(self, axis: str, target: float, now: float) -> float:
+    def _step(self, axis: str, target: float, now: float) -> Tuple[float, bool]:
         state = self._states[axis]
         cfg = state.config
         smoothing = state.smoothing
@@ -96,26 +96,35 @@ class CommandSmoother:
         prev_value = state.value
         prev_time = state.time
 
+        changed = False
+
         if prev_value is None or prev_time is None:
             filtered = target
+            changed = True
         else:
             dt = max(now - prev_time, 1e-3)
             if cfg.max_velocity > 0:
                 max_step = cfg.max_velocity * dt
                 target = self._clamp(target, prev_value - max_step, prev_value + max_step)
             alpha = self._clamp(smoothing.alpha, 0.0, 1.0)
-            filtered = alpha * target + (1.0 - alpha) * prev_value
-            if abs(filtered - prev_value) < smoothing.deadband:
+            candidate = alpha * target + (1.0 - alpha) * prev_value
+            if abs(candidate - prev_value) < smoothing.deadband:
                 filtered = prev_value
+            else:
+                filtered = candidate
+                changed = True
         state.value = filtered
         state.time = now
-        return filtered
+        return filtered, changed
 
-    def update(self, pitch_target: float, yaw_target: float, now: float) -> Tuple[float, float]:
+    def update(
+        self, pitch_target: float, yaw_target: float, now: float
+    ) -> Tuple[float, float, bool]:
 
-        filtered_pitch = self._step("pitch", pitch_target, now)
-        filtered_yaw = self._step("yaw", yaw_target, now)
-        return filtered_pitch, filtered_yaw
+        filtered_pitch, pitch_changed = self._step("pitch", pitch_target, now)
+        filtered_yaw, yaw_changed = self._step("yaw", yaw_target, now)
+        changed = pitch_changed or yaw_changed
+        return filtered_pitch, filtered_yaw, changed
 
     def reset(self) -> None:
         for state in self._states.values():
@@ -312,6 +321,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
     tracking_cfg = cfg.get("tracking", default={}, expected_type=dict)
     min_conf = float(tracking_cfg.get("min_confidence", 0.5))
     priority = tracking_cfg.get("priority", "center_distance")
+    max_lost_frames = int(tracking_cfg.get("max_lost_frames", 5))
+    return_damping = float(tracking_cfg.get("return_damping", 0.9))
+    return_deadband = float(tracking_cfg.get("return_deadband_deg", 0.1))
 
     debug_cfg = cfg.get("debug", default={}, expected_type=dict)
     print_fps = bool(debug_cfg.get("print_fps", False))
@@ -331,6 +343,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
     last_status_log = 0.0
     latest_pitch = 0.0
     latest_yaw = 0.0
+    target_lost_frames = 0
+    last_valid_pitch = 0.0
+    last_valid_yaw = 0.0
 
     try:
         while running:
@@ -368,16 +383,33 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 pitch_raw, yaw_raw = transformer.pixel_to_angle(
                     cx, cy, frame.shape[1], frame.shape[0]
                 )
+                last_valid_pitch, last_valid_yaw = pitch_raw, yaw_raw
+                target_lost_frames = 0
                 has_target = True
             else:
-                pitch_raw, yaw_raw = 0.0, 0.0
+                target_lost_frames += 1
                 has_target = False
+                if target_lost_frames <= max_lost_frames:
+                    pitch_raw, yaw_raw = last_valid_pitch, last_valid_yaw
+                else:
+                    last_valid_pitch *= return_damping
+                    last_valid_yaw *= return_damping
+                    if abs(last_valid_pitch) < return_deadband:
+                        last_valid_pitch = 0.0
+                    if abs(last_valid_yaw) < return_deadband:
+                        last_valid_yaw = 0.0
+                    pitch_raw, yaw_raw = last_valid_pitch, last_valid_yaw
 
-            filtered_pitch, filtered_yaw = smoother.update(pitch_raw, yaw_raw, now)
+            filtered_pitch, filtered_yaw, should_send = smoother.update(
+                pitch_raw, yaw_raw, now
+            )
             latest_pitch, latest_yaw = filtered_pitch, filtered_yaw
 
             if serial:
-                serial.send_command(filtered_pitch, filtered_yaw, laser_on=False, heartbeat=True)
+                if should_send:
+                    serial.send_command(
+                        filtered_pitch, filtered_yaw, laser_on=False, heartbeat=True
+                    )
 
                 status = serial.get_latest_status()
                 if status and now - last_status_log > 1.0:

@@ -17,7 +17,7 @@ camera:
   type: "aravis"
   config_path: "config/camera_config.yaml"
   intrinsics_path: "config/camera_intrinsics.yaml"
-  resolution: [1920, 1080]
+  resolution: [1280, 1024]
   fps: 60
 
 model:
@@ -28,14 +28,14 @@ model:
   classes: [0]
 
 serial:
-  port: "/dev/ttyTHS0"
+  port: "/dev/ttyTHS1"
   baudrate: 460800
   bytesize: 8
   parity: "N"
   stopbits: 1
   timeout: 0.1
   reconnect_interval: 1.0
-  heartbeat_interval: 0.5
+  heartbeat_interval: 0.05
 
 control:
   pitch:
@@ -56,6 +56,8 @@ tracking:
   min_confidence: 0.6
   smoothing_window: 5
   priority: "center_distance"
+  return_damping: 0.9
+  return_deadband_deg: 0.1
 
 performance:
   enable_gpu_preprocess: true
