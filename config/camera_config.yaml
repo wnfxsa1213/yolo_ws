@@ -1,6 +1,6 @@
 aravis:
   device_id: null            # 传None默认选择第一个设备
-  pixel_format: "BayerRG8"   # 参考 arv-tool-0.8 输出
+  pixel_format: "BayerGB8"   # 相机默认输出 BayerGB8，可按需调整
   width: 640
   height: 640
   packet_size: 9000          # jumbo frame

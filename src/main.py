@@ -18,6 +18,11 @@ from utils.config import ConfigError, ConfigManager
 from utils.logger import setup_logger
 
 try:
+    import cv2
+except ImportError:  # pragma: no cover
+    cv2 = None  # type: ignore
+
+try:
     import yaml
 except ImportError:  # pragma: no cover
     yaml = None  # type: ignore
@@ -334,6 +339,22 @@ def run_pipeline(args: argparse.Namespace) -> None:
 
     debug_cfg = cfg.get("debug", default={}, expected_type=dict)
     print_fps = bool(debug_cfg.get("print_fps", False))
+    show_image = bool(debug_cfg.get("show_image", False))
+    display_interval = int(debug_cfg.get("display_interval", 2))  # 每N帧显示一次
+    if display_interval < 1:
+        logger.warning("debug.display_interval=%s 非法，自动回退到 1 (每帧显示)", display_interval)
+        display_interval = 1
+    window_name = "Target Tracker"
+    window_created = False
+    if show_image:
+        if cv2 is None:  # type: ignore[truthy-function]
+            raise ConfigError("show_image 需要安装 OpenCV (python3-opencv)")
+        try:
+            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)  # type: ignore[attr-defined]
+            window_created = True
+        except cv2.error as exc:  # type: ignore[attr-defined]
+            logger.warning("CV窗口创建失败(%s)，自动禁用 show_image。", exc)
+            show_image = False
 
     running = True
 
@@ -469,6 +490,87 @@ def run_pipeline(args: argparse.Namespace) -> None:
                     logger.debug("DRY-RUN 指令: pitch=%.2f, yaw=%.2f", filtered_pitch, filtered_yaw)
 
             frame_counter += 1
+
+            # 跳帧显示以优化性能
+            should_display = (frame_counter % display_interval == 0)
+            if show_image and window_created and cv2 is not None and should_display:
+                try:
+                    # 仅在需要显示时才拷贝图像
+                    vis = frame.copy()
+
+                    # 批量绘制检测框（减少函数调用开销）
+                    for det in detections:
+                        top_left = (int(det.x1), int(det.y1))
+                        bottom_right = (int(det.x2), int(det.y2))
+                        is_target = target is not None and det is target
+                        color = (0, 0, 255) if is_target else (0, 255, 0)
+                        thickness = 2 if is_target else 1
+                        cv2.rectangle(vis, top_left, bottom_right, color, thickness)  # type: ignore[attr-defined]
+
+                        # 简化标签绘制（减少字符串格式化）
+                        label = f"id:{det.class_id} {det.confidence:.2f}"
+                        cv2.putText(
+                            vis,
+                            label,
+                            (top_left[0], max(12, top_left[1] - 6)),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.4,
+                            color,
+                            1,
+                            cv2.LINE_AA,
+                        )
+
+                    # 绘制目标中心标记
+                    if target:
+                        cx, cy = target.center
+                        cv2.drawMarker(  # type: ignore[attr-defined]
+                            vis,
+                            (int(cx), int(cy)),
+                            (255, 0, 0),
+                            markerType=cv2.MARKER_CROSS,
+                            markerSize=18,
+                            thickness=2,
+                            line_type=cv2.LINE_AA,
+                        )
+
+                    # 合并状态信息绘制
+                    elapsed_total = time.perf_counter() - t_start
+                    fps_vis = frame_counter / elapsed_total if elapsed_total > 0 else 0.0
+                    status_lines = [
+                        f"pitch:{filtered_pitch:.2f} yaw:{filtered_yaw:.2f}",
+                        f"FPS:{fps_vis:.1f} target:{'Y' if target else 'N'}",
+                    ]
+                    for i, line in enumerate(status_lines):
+                        cv2.putText(
+                            vis,
+                            line,
+                            (12, 24 + i * 24),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            (255, 255, 255),
+                            2 if i == 0 else 1,
+                            cv2.LINE_AA,
+                        )
+
+                    cv2.imshow(window_name, vis)  # type: ignore[attr-defined]
+                except cv2.error as exc:  # type: ignore[attr-defined]
+                    logger.warning("show_image 渲染失败: %s，关闭调试窗口。", exc)
+                    show_image = False
+                    if window_created:
+                        try:
+                            cv2.destroyWindow(window_name)  # type: ignore[attr-defined]
+                        except cv2.error:  # type: ignore[attr-defined]
+                            pass
+                        window_created = False
+
+            # 始终处理键盘事件，即使不显示图像
+            if show_image and window_created and cv2 is not None:
+                key = cv2.waitKey(1) & 0xFF  # type: ignore[attr-defined]
+                if key in (27, ord("q")):
+                    logger.info("检测到退出按键(Q/ESC)，终止主循环。")
+                    running = False
+                    break
+
             if print_fps and frame_counter % 50 == 0:
                 elapsed = now - t_start
                 fps = frame_counter / elapsed if elapsed > 0 else 0.0
@@ -494,6 +596,8 @@ def run_pipeline(args: argparse.Namespace) -> None:
             serial.stop()
         if not args.no_camera and camera:
             camera.close()  # type: ignore[union-attr]
+        if window_created and cv2 is not None:
+            cv2.destroyWindow(window_name)  # type: ignore[attr-defined]
 
 
 # --------------------------------------------------------------------------- #

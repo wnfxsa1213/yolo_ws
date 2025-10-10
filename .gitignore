@@ -1,0 +1,53 @@
+# Build artifacts
+build/
+cmake-build-*/
+src/algorithms/build/
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.dylib
+*.so
+
+# Compiled Python assets
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# TensorRT / model binaries
+detection_core*
+models/**/*.engine
+models/**/*.plan
+models/**/*.trt
+models/**/*.onnx
+models/**/*.cache
+models/**/*.bin
+models/**/*.pt
+
+# Generated logs and temporary docs
+logs/
+*.log
+*.tmp
+*.bak
+docs/generated/
+docs/**/*.pdf
+docs/**/*.docx
+
+# Virtual environments / package metadata
+.venv/
+.env
+.env.*
+*.egg-info/
+dist/
+
+# IDE / tooling
+.vscode/
+.idea/
+
+# AI assistant workflow artifacts
+.spec-workflow/
+.mcp-cache/
+.cache/

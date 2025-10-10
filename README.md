@@ -74,8 +74,8 @@ yolo_ws/
 
 **硬件：**
 - Jetson Orin NX Super 16GB
-- 海康威视USB3.0工业相机
-- STM32H750开发板
+- 海康威视USB3.0工业相机（已更换为Aravis兼容的工业相机）
+- STM32F407VET6开发板
 - NVMe SSD 256GB+
 
 **软件：**
@@ -144,6 +144,9 @@ make -j$(nproc)
 # 下载YOLOv8-nano预训练权重
 # wget https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt
 
+# GUI一键党可启动:
+python scripts/model_tools_gui.py
+
 # 导出ONNX
 python scripts/export_onnx.py --weights yolov8n.pt --imgsz 640
 
@@ -162,12 +165,13 @@ python scripts/test_camera.py --config config/camera_config.yaml
 
 ### 测试串口（第一阶段Sprint 3）
 ```bash
-python scripts/test_serial.py --port /dev/ttyTHS0 --baudrate 460800
+python scripts/test_serial.py --port /dev/ttyTHS1 --baudrate 460800
 ```
 
 ### 运行主程序（第一阶段Sprint 5）
 ```bash
 python src/main.py --config config/system_config.yaml
+# 需要实时预览时，确保 config/system_config.yaml 里的 debug.show_image: true 并系统已安装 python3-opencv
 ```
 
 **预期输出：**
@@ -175,7 +179,7 @@ python src/main.py --config config/system_config.yaml
 [INFO] 系统初始化...
 [INFO] 相机连接成功: 1920x1080 @ 60fps
 [INFO] YOLO引擎加载成功: yolov8n_fp16.engine
-[INFO] 串口连接成功: /dev/ttyTHS0 @ 460800
+[INFO] 串口连接成功: /dev/ttyTHS1 @ 460800
 [INFO] 主循环启动...
 [INFO] FPS: 35.2, Detections: 2, Latency: 32ms
 [INFO] Target: pitch=5.2°, yaw=-12.3°, distance=0cm
@@ -229,7 +233,7 @@ python scripts/benchmark.py --engine models/yolov8n_fp16.engine
 | [Jetson_Development.md](docs/Jetson_Development.md) | Jetson开发完整指南 |
 | [ENVIRONMENT_SETUP.md](docs/ENVIRONMENT_SETUP.md) | 环境配置详细说明 |
 | [PHASE1_DEVELOPMENT_PLAN.md](docs/PHASE1_DEVELOPMENT_PLAN.md) | 第一阶段开发计划 |
-| [H750_Development_V2.md](docs/H750_Development_V2.md) | STM32H750开发文档 |
+| [F407_Development_V2.md](docs/F407_Development_V2.md) | STM32F407开发文档 |
 | [CRSF_Protocol_Reference.md](docs/CRSF_Protocol_Reference.md) | CRSF协议参考 |
 | [Quick_Start_Guide.md](docs/Quick_Start_Guide.md) | 快速开始指南 |
 

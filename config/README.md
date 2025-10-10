@@ -73,7 +73,7 @@ model:
   classes: [0]  # COCO person class
 
 serial:
-  port: "/dev/ttyTHS0"
+  port: "/dev/ttyTHS1"
   baudrate: 460800
   timeout: 0.1
 

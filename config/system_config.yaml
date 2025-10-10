@@ -17,7 +17,7 @@ camera:
   type: "aravis"
   config_path: "config/camera_config.yaml"
   intrinsics_path: "config/camera_intrinsics.yaml"
-  resolution: [1280, 1024]
+  resolution: [640, 640]
   fps: 60
 
 model:
@@ -66,7 +66,8 @@ performance:
   buffer_pool_size: 10
 
 debug:
-  show_image: false
+  show_image: true
+  display_interval: 2      # 每N帧显示一次，降低显示开销（1=每帧显示，2=每2帧显示）
   save_detections: false
   print_fps: true
   profile_performance: false

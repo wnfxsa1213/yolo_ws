@@ -24,6 +24,17 @@ if(NOT TENSORRT_INCLUDE_DIR OR NOT TENSORRT_LIBRARY)
     message(FATAL_ERROR "TensorRT headers or libraries未找到，请确认已安装TensorRT SDK。")
 endif()
 
+if(NOT Python3_EXTENSION_MODULE_SUFFIX)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or '')"
+        OUTPUT_VARIABLE Python3_EXTENSION_MODULE_SUFFIX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    if(NOT Python3_EXTENSION_MODULE_SUFFIX)
+        message(FATAL_ERROR "艹，Python扩展模块后缀没拿到，确认Python环境没出幺蛾子。")
+    endif()
+endif()
+
 add_library(detection_core MODULE
     src/detector.cpp
     src/coordinate.cpp
@@ -58,4 +69,4 @@ set_target_properties(detection_core PROPERTIES
 )
 
 install(TARGETS detection_core
-        LIBRARY DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+        LIBRARY DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/..)

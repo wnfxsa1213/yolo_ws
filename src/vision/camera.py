@@ -144,7 +144,9 @@ class AravisCamera(CameraInterface):
         desired = self.config.pixel_format
         if desired:
             try:
-                if hasattr(self._camera, "set_string_feature_value"):
+                if hasattr(self._camera, "set_pixel_format_from_string"):
+                    self._camera.set_pixel_format_from_string(desired)
+                elif hasattr(self._camera, "set_string_feature_value"):
                     self._camera.set_string_feature_value("PixelFormat", desired)
                 elif hasattr(Aravis, "pixel_format_from_string") and hasattr(self._camera, "set_pixel_format"):
                     pixel_value = Aravis.pixel_format_from_string(desired)

@@ -69,7 +69,7 @@ python scripts/test_camera.py \
 **用法：**
 ```bash
 python scripts/test_serial.py \
-    --port /dev/ttyTHS0 \
+    --port /dev/ttyTHS1 \
     --baudrate 460800 \
     --loopback
 ```
