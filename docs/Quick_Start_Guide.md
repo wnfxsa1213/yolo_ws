@@ -496,7 +496,7 @@ python src/main.py
 # [INFO] Camera opened successfully
 # [INFO] Loading YOLOv8 model...
 # [INFO] Model loaded: 30.5 FPS
-# [INFO] Serial port opened: /dev/ttyTHS0
+# [INFO] Serial port opened: /dev/ttyTHS1
 # [INFO] System ready!
 ```
 
@@ -713,7 +713,7 @@ python tests/test_detection.py
 |------|---------|---------|
 | 相机打不开 | USB权限/驱动问题 | `sudo usermod -aG video $USER`<br>重新登录 |
 | YOLO推理慢 | 未使用TensorRT | 转换模型为.engine格式 |
-| 串口无法打开 | 权限问题 | `sudo usermod -aG dialout $USER`<br>`sudo chmod 666 /dev/ttyTHS0` |
+| 串口无法打开 | 权限问题 | `sudo usermod -aG dialout $USER`<br>`sudo chmod 666 /dev/ttyTHS1` |
 | 虚拟环境无torch | Jetson需要特殊安装 | 使用系统自带PyTorch<br>或参考NVIDIA官方指南 |
 
 ### 7.2 STM32相关

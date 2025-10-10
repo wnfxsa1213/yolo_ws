@@ -6,7 +6,7 @@
 |------|------|
 | **阶段名称** | Phase 1 - 基础框架与核心功能 |
 | **目标** | 搭建完整的基础框架，实现核心检测追踪流程 |
-| **预计时长** | 2-3周 |
+| **预计时长** | 2-3周（已完成） |
 | **创建日期** | 2025-10-08 |
 | **作者** | 幽浮喵 (浮浮酱) ฅ'ω'ฅ |
 
@@ -17,7 +17,7 @@
 ### 核心目标
 1. ✅ **基础设施完备**：日志、配置、工具类可用
 2. ✅ **相机采集正常**：海康相机稳定采集图像
-3. ✅ **串口通信稳定**：与H750双向通信正常
+3. ✅ **串口通信稳定**：与F407双向通信正常
 4. ✅ **检测功能就绪**：YOLO检测器推理成功
 5. ✅ **基础流程打通**：采集 → 检测 → 串口发送的完整链路
 
@@ -29,7 +29,7 @@
 
 ---
 
-## 📅 开发计划 (分5个Sprint)
+## 📅 开发计划 (分5个Sprint) — 已完成 — 已完成
 
 ### Sprint 1: 基础设施搭建 (3天)
 **目标：** 完成开发基础设施
@@ -37,13 +37,13 @@
 #### 任务清单
 
 **1.1 工具模块开发**
-- [ ] `src/utils/logger.py` - 日志系统
+- [x] `src/utils/logger.py` - 日志系统
   - 实现彩色控制台输出
   - 实现文件日志轮转
   - 配置不同级别的日志格式
   - 测试：输出不同级别日志到控制台和文件
 
-- [ ] `src/utils/config.py` - 配置管理器
+- [x] `src/utils/config.py` - 配置管理器
   - 实现YAML配置加载
   - 实现配置字段验证
   - 实现嵌套配置访问（点号分隔）
@@ -56,18 +56,18 @@
   - 测试：测量示例函数的执行时间
 
 **1.2 配置文件创建**
-- [ ] `config/system_config.yaml` - 主配置文件
+- [x] `config/system_config.yaml` - 主配置文件
   - 定义所有配置项结构
   - 填写开发环境默认值
   - 添加注释说明每个配置项
 
-- [ ] `config/camera_config.yaml` - 相机配置
+- [x] `config/camera_config.yaml` - 相机配置
   - 定义海康相机参数
   - 设置适合开发的初始参数
 
 **1.3 测试脚本**
-- [ ] `scripts/test_logger.py` - 测试日志系统
-- [ ] `scripts/test_config.py` - 测试配置加载
+- [x] `scripts/test_logger.py` - 测试日志系统
+- [x] `scripts/test_config.py` - 测试配置加载
 
 **验收标准：**
 - ✅ 日志能正确输出到控制台和文件
@@ -82,13 +82,13 @@
 #### 任务清单
 
 **2.1 相机接口定义**
-- [ ] `src/vision/camera.py` - 抽象接口
+- [x] `src/vision/camera.py` - 抽象接口
   - 定义`CameraInterface`抽象基类
   - 定义`open()`, `close()`, `capture()`, `get_intrinsics()`方法
   - 添加完整的docstring文档
 
 **2.2 Aravis 相机实现**
-- [ ] `src/vision/camera.py` - AravisCamera类
+- [x] `src/vision/camera.py` - AravisCamera类
   - 实现相机初始化（PyGObject + Aravis）
   - 实现图像采集（连续采集模式）
   - 支持Bayer→BGR转换
@@ -97,7 +97,7 @@
   - 添加日志记录（使用logger）
 
 **2.3 相机测试脚本**
-- [ ] `scripts/test_camera.py` - 相机测试工具
+- [x] `scripts/test_camera.py` - 相机测试工具
   - 检测相机连接状态
   - 采集并显示图像
   - 测试不同参数配置
@@ -120,7 +120,7 @@
 ---
 
 ### Sprint 3: 串口通信开发 (3天)
-**目标：** 完成与H750的双向通信
+**目标：** 完成与F407的双向通信
 
 #### 任务清单
 
@@ -362,7 +362,7 @@ Web监控界面
 ```
 - Jetson Orin NX Super 16GB
 - 海康威视工业相机 (USB3.0)
-- STM32H750开发板（串口连接）
+- STM32F407VET6开发板（串口连接）
 - NVMe SSD 256GB+
 ```
 
@@ -413,7 +413,7 @@ docs(readme): 更新安装说明
 | 性能不达标 | 中 | 低 | FP16优化，预留INT8量化方案 |
 
 ### 外部依赖
-- **H750固件**: 需要H750端先实现串口协议
+- **F407固件**: 需要F407端先实现串口协议
 - **YOLO模型**: 需要预训练的YOLOv8-nano模型
 - **相机**: 需要海康相机和SDK
 
@@ -442,7 +442,7 @@ python scripts/test_camera.py  # 采集10帧，无错误
 **标志：**
 - ✅ 串口双向通信正常
 - ✅ 协议编解码验证通过
-- ✅ 能发送模拟数据到H750
+- ✅ 能发送模拟数据到F407
 
 **验收标准：**
 ```bash
@@ -475,7 +475,7 @@ python scripts/benchmark.py  # 推理<10ms, FPS>100
 ### Milestone 4: 完整流程打通 (第3周末)
 **标志：**
 - ✅ 相机 → 检测 → 串口完整流程运行
-- ✅ 能实时追踪并发送角度到H750
+- ✅ 能实时追踪并发送角度到F407
 - ✅ 系统稳定运行1小时
 
 **验收标准：**
@@ -486,7 +486,7 @@ python src/main.py --config config/system_config.yaml
 # 检查输出:
 # [INFO] FPS: 35.2, Detections: 2, Latency: 42ms
 # [INFO] Target: pitch=5.2°, yaw=-12.3°
-# [INFO] H750 Mode: JETSON_CONTROL
+# [INFO] F407 Mode: JETSON_CONTROL
 ```
 
 ---

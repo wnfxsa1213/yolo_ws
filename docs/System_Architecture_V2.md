@@ -23,11 +23,13 @@
 ### 架构调整
 - 🔧 **执行器**：改用数字舵机（50Hz PWM）
 - 🔧 **控制策略**：优先轨迹规划，预留前馈接口
-- 🔧 **实时性**：H750作为控制权仲裁中枢
+- 🔧 **实时性**：F407作为控制权仲裁中枢
 
 ---
 
 ## 1️⃣ 系统概述
+（V2 文档保留，待 Phase 2 更新）
+（V2 文档保留，待 Phase 2 更新）
 
 ### 1.1 项目目标
 
@@ -109,7 +111,7 @@
                       UART1 (460800bps)
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│            Layer 2: STM32H750 实时控制层                      │
+│            Layer 2: STM32F407 实时控制层                       │
 │                                                               │
 │  ┌───────────────────────────────────────────────────────┐  │
 │  │  控制权仲裁模块                                        │  │
@@ -127,7 +129,7 @@
 │  │  温度监控 | 信号超时 | 故障保护                        │  │
 │  └───────────────────────────────────────────────────────┘  │
 │                                                               │
-│  硬件: STM32H750VBT6 @ 400MHz + FreeRTOS                     │
+│  硬件: STM32F407VET6 @ 168MHz + FreeRTOS                     │
 │  性能: 1kHz控制环, <1ms响应                                  │
 └─────────────────────────────────────────────────────────────┘
                             ↓
@@ -156,7 +158,7 @@
 │  │ (ExpressLRS) │ ─────► │ (CRSF协议)   │ ────────────┐    │
 │  └──────────────┘         └──────────────┘              │    │
 │                                                          ▼    │
-│                                                    STM32H750  │
+│                                                    STM32F407  │
 │                                                  (强制接管)    │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -166,14 +168,14 @@
 ```
 目标追踪模式 (Jetson控制):
   相机采图 → YOLO检测 → 目标追踪 → 坐标转换 →
-  UART1发送 → H750解析 → 轨迹规划 → 舵机驱动
+  UART1发送 → F407解析 → 轨迹规划 → 舵机驱动
 
 遥控器模式 (RC控制):
-  遥控器输入 → ELRS接收机 → CRSF解析 → H750接管 →
+  遥控器输入 → ELRS接收机 → CRSF解析 → F407接管 →
   通道映射 → 轨迹规划 → 舵机驱动
 
 失控保护模式:
-  信号超时 → H750检测 → 归中位置 → 关闭激光 →
+  信号超时 → F407检测 → 归中位置 → 关闭激光 →
   LED报警 → 等待信号恢复
 ```
 
@@ -258,7 +260,7 @@ def pixel_to_angle(pixel_x, pixel_y, camera_intrinsics):
      - 预分配缓冲区
 ```
 
-### 3.2 STM32H750控制模块
+### 3.2 STM32F407控制模块
 
 #### 3.2.1 模块架构
 
@@ -329,7 +331,7 @@ def pixel_to_angle(pixel_x, pixel_y, camera_intrinsics):
 
 ## 4️⃣ 通信协议设计
 
-### 4.1 Jetson ↔ H750 通信协议
+### 4.1 Jetson ↔ F407 通信协议
 
 #### 4.1.1 物理层
 ```yaml
@@ -355,13 +357,13 @@ def pixel_to_angle(pixel_x, pixel_y, camera_intrinsics):
  * 总长度: 5 + LEN bytes
  */
 
-/* 下行指令 (Jetson → H750) */
+/* 下行指令 (Jetson → F407) */
 #define CMD_TARGET_POSITION     0x01    // 目标位置
 #define CMD_LASER_CONTROL       0x02    // 激光控制
 #define CMD_PARAM_SET           0x03    // 参数设置
 #define CMD_HEARTBEAT           0x06    // 心跳包
 
-/* 上行指令 (H750 → Jetson) */
+/* 上行指令 (F407 → Jetson) */
 #define CMD_STATUS_REPORT       0x81    // 状态上报
 #define CMD_POSITION_FEEDBACK   0x82    // 位置反馈
 #define CMD_FAULT_REPORT        0x83    // 故障上报
@@ -397,7 +399,7 @@ struct StatusReport {
 // 数据长度: 18 bytes
 ```
 
-### 4.2 遥控器 ↔ ELRS接收机 ↔ H750
+### 4.2 遥控器 ↔ ELRS接收机 ↔ F407
 
 ```yaml
 无线链路 (遥控器 → 接收机):
@@ -406,7 +408,7 @@ struct StatusReport {
   更新率: 50-500Hz
   延迟: <10ms
 
-有线链路 (接收机 → H750):
+有线链路 (接收机 → F407):
   接口: UART3
   协议: CRSF (Crossfire)
   波特率: 420000 bps
@@ -501,7 +503,7 @@ graph TD
 │ ByteTrack追踪     │ ~3ms     │ C++优化        │
 │ 坐标转换          │ ~0.5ms   │ 查表法         │
 │ UART1传输         │ ~2ms     │ 高波特率       │
-│ H750协议解析      │ ~0.2ms   │ DMA+中断       │
+│ F407协议解析      │ ~0.2ms   │ DMA+中断       │
 │ 轨迹规划          │ ~0.3ms   │ 简化算法       │
 │ PWM输出           │ ~1ms     │ 硬件定时器     │
 ├──────────────────┼──────────┼────────────────┤
@@ -527,16 +529,15 @@ GPU占用: ~45% (1024 CUDA cores Ampere)
 AI性能: 100 TOPS @ INT8
 ```
 
-**STM32H750:**
+**STM32F407:**
 ```
-CPU占用: ~45% @ 1kHz控制
-Flash使用: ~120KB / 128KB
-RAM使用: ~180KB / 1MB
-  - DTCM: ~30KB (快速变量)
-  - ITCM: ~50KB (关键代码)
-  - AXI SRAM: ~100KB (缓冲区)
+CPU占用: ~55% @ 1kHz控制 (性能较F407低)
+Flash使用: ~120KB / 512KB (Flash更充裕)
+RAM使用: ~160KB / 192KB
+  - SRAM: ~100KB (主RAM，可DMA)
+  - CCM RAM: ~60KB (零等待，不可DMA)
 
-功耗: ~0.8W @ 400MHz
+功耗: ~0.5W @ 168MHz (功耗较F407低)
 ```
 
 **数字舵机 (x2):**
@@ -546,7 +547,7 @@ RAM使用: ~180KB / 1MB
 平均功耗: ~2W (运动时)
 ```
 
-**总系统功耗: ~18W**
+**总系统功耗: ~17.7W** (F407功耗略低于F407)
 
 ---
 
@@ -627,7 +628,7 @@ yolo_ws/
 │   └── test_integration.py
 │
 ├── docs/                       # 文档
-│   ├── H750_Development_V2.md          # H750开发文档
+│   ├── F407_Development_V2.md          # F407开发文档
 │   ├── System_Architecture_V2.md       # 架构文档
 │   ├── CRSF_Protocol_Reference.md      # CRSF协议
 │   ├── Quick_Start_Guide.md            # 快速开始
@@ -683,8 +684,8 @@ Phase 2: 核心模块开发 (Week 2-3)
 
 Phase 3: 系统集成 (Week 4)
 ├─ 模块联调
-│  ├─ Jetson → H750通信
-│  ├─ RC → H750控制
+│  ├─ Jetson → F407通信
+│  ├─ RC → F407控制
 │  └─ 三模式切换测试
 ├─ 性能优化
 │  ├─ 延迟优化
@@ -748,14 +749,14 @@ STM32平台:
 ```
 硬件清单:
 [ ] Jetson Orin NX Super 16GB (含载板 + NVMe SSD 256GB+)
-[ ] 海康威视工业相机 (USB3.0接口)
-[ ] STM32H750VBT6开发板
+[ ] Aravis兼容工业相机 (GigE接口，替代海康威视)
+[ ] STM32F407VET6开发板
 [ ] ELRS接收机 (2.4GHz，支持CRSF协议)
 [ ] 数字舵机 x2 (15kg·cm+，50Hz PWM)
 [ ] 激光笔模块 (5mW红光，PWM调光)
 [ ] 电源模块 (12V → 5V 5A + 12V → 19V 3A for Jetson)
 [ ] 云台机械结构 (铝合金/碳纤维)
-[ ] 连接线材 (USB3.0/UART/杜邦线)
+[ ] 连接线材 (GigE网线/UART/杜邦线)
 
 软件清单:
 [ ] JetPack SDK (Jetson)
@@ -887,7 +888,7 @@ python src/main.py --config config/system_config.yaml
 1. **YOLOv8 Documentation** - https://docs.ultralytics.com/
 2. **ByteTrack Paper** - arXiv:2110.06864
 3. **TensorRT Developer Guide** - NVIDIA
-4. **STM32H750 Reference Manual** - ST Microelectronics
+4. **STM32F407 Reference Manual** - ST Microelectronics
 5. **CRSF Protocol Specification** - TBS Crossfire
 6. **ExpressLRS Documentation** - https://www.expresslrs.org/
 7. **FreeRTOS Kernel Guide** - https://www.freertos.org/
