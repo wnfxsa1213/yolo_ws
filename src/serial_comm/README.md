@@ -2,65 +2,47 @@
 
 ## 模块职责
 
-与STM32H750的串口通信，包括协议编解码和数据收发。
+与 STM32F407 云台控制板通过 460800bps 串口互通：编码角度命令、维持心跳、解析状态帧，并提供线程化的通信总线。
 
-## 待实现文件
+## 目录结构
 
-### protocol.py
-- **ProtocolEncoder 类**
-  - `encode_target_data(detected, pitch, yaw, distance)` - 编码目标数据
-  - `encode_heartbeat()` - 编码心跳包
-  - CRC8校验计算
+| 文件 | 职责 |
+|------|------|
+| `protocol.py` | 帧编码器/解码器，封装 XOR CRC、命令帧、心跳帧、状态帧解析 |
+| `communicator.py` | 串口驱动：发送队列、接收线程、心跳保持、自动重连 |
+| `__init__.py` | 模块导出 |
 
-- **ProtocolDecoder 类**
-  - `feed(data)` - 喂入接收数据
-  - `get_decoded()` - 获取解码后的数据包
-  - 状态机解析（等待帧头 → 接收数据 → CRC校验）
-  - 返回格式：`{'mode': int, 'current_pitch': float, 'current_yaw': float, 'temperature': float}`
+## 协议速览（Jetson_comm_integration v1.0）
 
-### communicator.py
-- **SerialCommunicator 类**
-  - 串口初始化 (`/dev/ttyTHS0`, 460800, 8N1)
-  - `send_target(detected, pitch, yaw, distance)` - 发送目标数据（异步）
-  - `receive_feedback()` - 接收反馈数据（异步）
-  - 发送队列 (asyncio.Queue)
-  - 接收队列 (asyncio.Queue)
-  - 超时处理 (500ms)
-  - 自动重连
-
-## 协议格式
-
-### 下行指令 (Jetson → H750)
 ```
-帧头 | 长度 | 类型 | 数据载荷      | CRC8
-0xAA | 0x0E | 0x01 | [14字节数据] | CRC
-0x55 |      |      |              |
-
-数据载荷 (14字节):
-- target_detected: uint8_t (1字节)
-- pitch: float (4字节)
-- yaw: float (4字节)
-- distance: uint16_t (2字节)
-- reserved: uint8_t[3] (3字节保留)
+AA 55 | FrameType | PayloadLen | Payload | CRC
 ```
 
-### 上行反馈 (H750 → Jetson)
+CRC = 所有 `FrameType`, `PayloadLen`, `Payload` 字节按位 XOR。
+
+| Type | 方向 | Payload | 描述 |
+|------|------|---------|------|
+| `0x01` | Jetson→MCU | 6B | `pitch_cdeg`, `yaw_cdeg`（int16, 0.01°），`laser_on`，`flags`(Bit0=心跳) |
+| `0x02` | Jetson→MCU | 0B | 心跳帧 |
+| `0x10` | Jetson→MCU | 0B | 状态立即回报请求 |
+| `0x81` | MCU→Jetson | 10B | 姿态/模式反馈（四个 int16 角度 + mode + flags） |
+
+角度 clamp：
+- Pitch：`[-90°, +90°]`（协议范围 `[-9000, +9000]` cdeg）
+- Yaw：`[-180°, +180°]`（协议范围 `[-18000, +18000]` cdeg）
+
+## 使用示例
+
+```python
+from serial_comm import SerialCommunicator
+
+comm = SerialCommunicator("/dev/ttyTHS1")
+comm.start()
+comm.send_command(pitch_deg=5.0, yaw_deg=-12.3, laser_on=True)
+
+status = comm.get_latest_status()
+if status:
+    print(status.mode, status.flags)
 ```
-帧头 | 长度 | 类型 | 数据载荷      | CRC8
-0xAA | 0x0E | 0x02 | [14字节数据] | CRC
-0x55 |      |      |              |
 
-数据载荷 (14字节):
-- mode: uint8_t (0=待机, 1=RC, 2=Jetson, 3=Failsafe)
-- current_pitch: float (4字节)
-- current_yaw: float (4字节)
-- temperature: uint8_t (1字节, 单位°C)
-- reserved: uint8_t[4] (4字节保留)
-```
-
-## 依赖
-- pyserial
-- asyncio
-
-## 状态
-⏳ 待实现
+`last_status_age()` 可用于监控 MCU 心跳，超出 0.15s 需要补发 `request_status()` 或检查线路。

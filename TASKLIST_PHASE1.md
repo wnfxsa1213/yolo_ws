@@ -95,19 +95,19 @@
 ## 🗂️ Sprint 4: 串口通信 (2天)
 
 ### 协议层
-- [ ] `src/serial_comm/protocol.py` - ProtocolEncoder **P0**
-- [ ] `src/serial_comm/protocol.py` - ProtocolDecoder **P0**
-- [ ] CRC8校验实现 **P0**
+- [x] `src/serial_comm/protocol.py` - ProtocolEncoder **P0**
+- [x] `src/serial_comm/protocol.py` - ProtocolDecoder **P0**
+- [x] CRC8校验实现 **P0**
 
 ### 通信层
-- [ ] `src/serial_comm/communicator.py` - SerialCommunicator **P0**
-- [ ] 异步发送队列 **P0**
-- [ ] 异步接收队列 **P0**
-- [ ] 超时处理（500ms） **P0**
-- [ ] 自动重连机制 **P1**
+- [x] `src/serial_comm/communicator.py` - SerialCommunicator **P0**
+- [x] 异步发送队列 **P0**
+- [x] 异步接收队列 **P0**
+- [x] 超时处理（500ms） **P0**
+- [x] 自动重连机制 **P1**
 
 ### 测试工具
-- [ ] `scripts/test_serial.py` - 串口测试脚本 **P0**
+- [x] `scripts/test_serial.py` - 串口测试脚本 **P0**
 
 **Sprint 4 验收**:
 - ✅ 协议编解码正确
@@ -154,8 +154,8 @@
 
 ### 按优先级
 ```
-P0任务 (必须): [ ] 25/45 (56%)
-P1任务 (应该): [ ] 4/11 (36%)
+P0任务 (必须): [ ] 33/45 (73%)
+P1任务 (应该): [ ] 5/11 (45%)
 P2任务 (可选): [ ] 12/12 (0%)
 ```
 
@@ -164,7 +164,7 @@ P2任务 (可选): [ ] 12/12 (0%)
 Sprint 1: [x] 7/7   (100%)
 Sprint 2: [ ] 3/4   (75%)
 Sprint 3: [x] 9/9   (100%)
-Sprint 4: [ ] 0/16  (0%)
+Sprint 4: [x] 9/9   (100%)
 Sprint 5: [ ] 0/12  (0%)
 ```
 
