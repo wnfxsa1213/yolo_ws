@@ -325,6 +325,13 @@ def run_pipeline(args: argparse.Namespace) -> None:
     return_damping = float(tracking_cfg.get("return_damping", 0.9))
     return_deadband = float(tracking_cfg.get("return_deadband_deg", 0.1))
 
+    if not (0.0 < return_damping < 1.0):
+        raise ConfigError(f"return_damping 必须在 (0, 1) 范围内: {return_damping}")
+    if return_deadband < 0:
+        raise ConfigError(f"return_deadband_deg 必须 ≥ 0: {return_deadband}")
+    if max_lost_frames < 0:
+        raise ConfigError(f"max_lost_frames 必须 ≥ 0: {max_lost_frames}")
+
     debug_cfg = cfg.get("debug", default={}, expected_type=dict)
     print_fps = bool(debug_cfg.get("print_fps", False))
 
@@ -347,6 +354,8 @@ def run_pipeline(args: argparse.Namespace) -> None:
     last_valid_pitch = 0.0
     last_valid_yaw = 0.0
     first_target_acquired = False
+    cmd_sent_count = 0
+    cmd_skipped_count = 0
 
     try:
         while running:
@@ -387,15 +396,26 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 last_valid_pitch, last_valid_yaw = pitch_raw, yaw_raw
                 target_lost_frames = 0
                 first_target_acquired = True
+                logger.debug(
+                    "目标跟踪: pitch=%.2f° yaw=%.2f°",
+                    pitch_raw,
+                    yaw_raw,
+                )
                 has_target = True
             else:
                 has_target = False
                 if not first_target_acquired:
                     pitch_raw, yaw_raw = 0.0, 0.0
+                    logger.debug("等待首次目标获取")
                 else:
                     target_lost_frames += 1
                     if target_lost_frames <= max_lost_frames:
                         pitch_raw, yaw_raw = last_valid_pitch, last_valid_yaw
+                        logger.debug(
+                            "目标丢失(保持): %d/%d",
+                            target_lost_frames,
+                            max_lost_frames,
+                        )
                     else:
                         decay_steps = target_lost_frames - max_lost_frames
                         decay_factor = return_damping ** decay_steps
@@ -405,6 +425,12 @@ def run_pipeline(args: argparse.Namespace) -> None:
                             pitch_raw = 0.0
                         if abs(yaw_raw) < return_deadband:
                             yaw_raw = 0.0
+                        logger.debug(
+                            "目标丢失(衰减): step=%d pitch=%.2f° yaw=%.2f°",
+                            decay_steps,
+                            pitch_raw,
+                            yaw_raw,
+                        )
 
             filtered_pitch, filtered_yaw, should_send = smoother.update(
                 pitch_raw, yaw_raw, now
@@ -416,6 +442,15 @@ def run_pipeline(args: argparse.Namespace) -> None:
                     serial.send_command(
                         filtered_pitch, filtered_yaw, laser_on=False, heartbeat=True
                     )
+                    cmd_sent_count += 1
+                    logger.debug(
+                        "发送命令: pitch=%.2f° yaw=%.2f°",
+                        filtered_pitch,
+                        filtered_yaw,
+                    )
+                else:
+                    cmd_skipped_count += 1
+                    logger.debug("命令未变化，跳过发送")
 
                 status = serial.get_latest_status()
                 if status and now - last_status_log > 1.0:
@@ -446,6 +481,15 @@ def run_pipeline(args: argparse.Namespace) -> None:
             latest_pitch,
             latest_yaw,
         )
+        if serial:
+            total_cmds = cmd_sent_count + cmd_skipped_count
+            skip_rate = cmd_skipped_count / total_cmds if total_cmds > 0 else 0.0
+            logger.info(
+                "命令统计: 发送=%d, 跳过=%d, 跳过率=%.1f%%",
+                cmd_sent_count,
+                cmd_skipped_count,
+                skip_rate * 100.0,
+            )
         if serial:
             serial.stop()
         if not args.no_camera and camera:
