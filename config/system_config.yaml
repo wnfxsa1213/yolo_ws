@@ -1,78 +1,83 @@
 project:
-  name: "target-tracker"
-  version: "0.1.0"
-  description: "Jetson Orin NX Super 智能云台追踪系统"
-  log_level: "INFO"
+  name: "target-tracker"        # 项目代号，用于日志输出与报表标题
+  version: "0.1.0"              # 配置版本号，便于未来兼容性校验
+  description: "Jetson Orin NX Super 智能云台追踪系统"  # 项目描述
+  log_level: "DEBUG"            # 全局日志等级 (DEBUG/INFO/WARNING/ERROR)
 
 logging:
-  log_dir: "logs"
-  file_name: "system.log"
-  rotation: "time"         # time / size
-  when: "midnight"
-  interval: 1
-  backup_count: 7
-  max_bytes: 10485760
+  log_dir: "logs"               # 日志目录，程序启动时自动创建
+  file_name: "system.log"       # 主日志文件名
+  rotation: "time"              # 轮转策略: time / size
+  when: "midnight"              # time 轮转时的时间粒度
+  interval: 1                   # 轮转频率 (1=每日)
+  backup_count: 7               # 保留日志文件数量
+  max_bytes: 10485760           # size 轮转时的文件大小阈值
 
 camera:
-  type: "aravis"
-  config_path: "config/camera_config.yaml"
-  intrinsics_path: "config/camera_intrinsics.yaml"
-  resolution: [640, 640]
-  fps: 60
+  type: "aravis"                # 相机驱动类型 (aravis / mock 等)
+  config_path: "config/camera_config.yaml"         # Aravis 专用配置文件
+  intrinsics_path: "config/camera_intrinsics.yaml" # 相机内参文件
+  resolution: [640, 640]        # 采集分辨率 (宽, 高)
+  fps: 120                      # 期望采集帧率，超出上限由相机 SDK 限速
 
 model:
-  engine_path: "models/yolov8n_fp16.engine"
-  input_size: [640, 640]
-  conf_threshold: 0.5
-  nms_threshold: 0.45
-  classes: [0]
+  engine_path: "models/yolov8n_fp16.engine"  # TensorRT 引擎路径
+  input_size: [640, 640]      # YOLO 输入尺寸 (宽, 高)
+  conf_threshold: 0.5         # 推理最小置信度
+  nms_threshold: 0.45         # NMS 阈值
+  classes: [0]                # 允许的类别 ID 列表
 
 serial:
-  port: "/dev/ttyTHS1"
-  baudrate: 460800
-  bytesize: 8
-  parity: "N"
-  stopbits: 1
-  timeout: 0.1
-  reconnect_interval: 1.0
-  heartbeat_interval: 0.05
+  port: "/dev/ttyTHS1"        # 串口设备路径
+  baudrate: 460800            # 波特率
+  bytesize: 8                 # 数据位
+  parity: "N"                 # 校验位 (N/E/O)
+  stopbits: 1                 # 停止位
+  timeout: 0.1                # 读超时 (秒)
+  reconnect_interval: 1.0     # 断线后重连间隔
+  heartbeat_interval: 0.05    # 心跳发送间隔 (秒)
 
 control:
   pitch:
-    max_velocity: 150.0
-    max_accel: 300.0
-    limits: [-90.0, 90.0]
+    max_velocity: 30.0       # PITCH 轴最大角速度 (deg/s)
+    max_accel: 300.0          # TODO(P1): PITCH 轴最大角加速度，尚未在 CommandSmoother 中落实
+    limits: [-90.0, 90.0]     # PITCH 轴安全范围 (deg)
   yaw:
-    max_velocity: 200.0
-    max_accel: 300.0
-    limits: [-180.0, 180.0]
+    max_velocity: 200.0       # YAW 轴最大角速度 (deg/s)
+    max_accel: 45.0          # TODO(P1): YAW 轴最大角加速度，待实现
+    limits: [-180.0, 180.0]   # YAW 轴安全范围 (deg)
   smoothing:
-    alpha: 0.6
-    deadband_deg: 0.2
+    alpha: 0.6                # 指令一阶低通滤波权重 (0~1)
+    deadband_deg: 0.2         # 小幅变化抑制阈值 (deg)
 
 tracking:
-  enable: true
-  max_lost_frames: 20
-  min_confidence: 0.6
-  smoothing_window: 5
-  priority: "center_distance"
-  return_damping: 0.9
-  return_deadband_deg: 0.1
+  enable: true                # 是否启用追踪逻辑
+  max_lost_frames: 20         # 允许保持目标的最大丢失帧数
+  min_confidence: 0.6         # 兼容字段：旧版阈值 (仍作为默认参考)
+  enter_confidence: 0.65      # 锁定目标所需置信度 (进入阶段)
+  exit_confidence: 0.45       # 维持锁定的最低置信度 (退出阶段)
+  match_iou_threshold: 0.3    # 历史框与新检测匹配所需的最小 IoU
+  bbox_blend_alpha: 0.4       # 框位置指数平滑权重 (0=完全旧值, 1=完全新值)
+  highlight_iou_threshold: 0.3  # 渲染高亮时的 IoU 判断阈值
+  smoothing_window: 5         # TODO(P2): 计划用于窗口平滑，当前实现未使用
+  priority: "center_distance" # 目标优先策略 (center_distance/confidence/bbox_area)
+  return_damping: 0.9         # 失联后角度指数衰减因子
+  return_deadband_deg: 0.1    # 角度回零死区 (deg)
 
 performance:
-  enable_gpu_preprocess: true
-  num_cuda_streams: 2
-  use_threading: true
-  buffer_pool_size: 10
+  enable_gpu_preprocess: true # TODO(P2): GPU 预处理开关，当前仍在 CPU 侧
+  num_cuda_streams: 2         # TODO(P2): TensorRT 并行流数量，暂未生效
+  use_threading: true         # 主程序是否启用线程流水线
+  buffer_pool_size: 10        # TODO(P3): GPU 缓冲池大小，待多 buffer 管线落地
 
 debug:
-  show_image: true
-  display_interval: 2      # 每N帧显示一次，降低显示开销（1=每帧显示，2=每2帧显示）
-  save_detections: false
-  print_fps: true
-  profile_performance: false
+  show_image: true            # 是否弹出调试窗口
+  display_interval: 2         # 每 N 帧刷新一次图像 (1=每帧)
+  save_detections: true       # TODO(P1): 期望保存检测结果到磁盘，逻辑待实现
+  print_fps: true             # 控制台打印 FPS
+  profile_performance: false  # TODO(P1): 是否启用阶段耗时统计
 
 paths:
-  recordings_dir: "logs/recordings"
-  detections_dir: "logs/detections"
-  profiler_report: "logs/perf_report.txt"
+  recordings_dir: "logs/recordings"  # 视频录制输出目录
+  detections_dir: "logs/detections"  # 检测结果存储目录
+  profiler_report: "logs/perf_report.txt"  # 性能分析输出文件

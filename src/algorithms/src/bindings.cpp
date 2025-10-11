@@ -47,6 +47,7 @@ PYBIND11_MODULE(detection_core, m) {
         .def("detect",
              [](YOLODetector& self, const py::array_t<uint8_t>& image) {
                  cv::Mat mat = numpy_uint8_to_mat(image);
+                 py::gil_scoped_release release;
                  return self.detect(mat);
              },
              py::arg("image"))

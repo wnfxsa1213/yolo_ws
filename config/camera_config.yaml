@@ -1,22 +1,71 @@
 aravis:
-  device_id: null            # 传None默认选择第一个设备
-  pixel_format: "BayerGB8"   # 相机默认输出 BayerGB8，可按需调整
-  width: 640
-  height: 640
-  packet_size: 9000          # jumbo frame
-  packet_delay: 1000
-  exposure_us: 8000
-  gain_db: 6.0
-  auto_exposure: false
-  auto_gain: false
-  stream_buffer_count: 8
+  # 设备选择与输出格式 --------------------------------------------------------- #
+  device_id: null                    # 传 None 默认使用首个在线设备，填写序列号可精确锁定
+  pixel_format: "BayerGB8"           # 输出像素格式，支持 BayerGB8/BayerRG8/RGB8/BGR8/Mono8 等
+  width: 640                         # 水平分辨率（像素）
+  height: 640                        # 垂直分辨率（像素）
+  offset_x: 0                        # ROI 起始 X（像素），需与 width 配合使用
+  offset_y: 0                        # ROI 起始 Y（像素）
+  binning: 1                         # 传感器硬件合并像素（>=1）
+  decimation: 1                      # 采样抽取比率（>=1）
+  frame_rate: 60.0                   # 目标帧率 (FPS)，部分机型需关闭自动曝光才能生效
+
+  # 曝光与增益 --------------------------------------------------------------- #
+  exposure_us: 8000                  # 手动曝光时间（微秒）
+  exposure_auto: "Off"               # 自动曝光模式 Off/Once/Continuous
+  auto_exposure: false               # 兼容旧逻辑：True 等价于 Continuous
+  exposure_auto_min: 1000            # 自动曝光最小值（微秒）
+  exposure_auto_max: 20000           # 自动曝光最大值（微秒）
+  exposure_auto_target: 0.4          # 自动曝光亮度目标 (0.0~1.0)，部分机型支持
+  gain_db: 6.0                       # 手动增益（dB）
+  gain_auto: "Off"                   # 自动增益模式 Off/Once/Continuous
+  auto_gain: false                   # 兼容旧逻辑：True 等价于 Continuous
+  gain_auto_min: 0.0                 # 自动增益最小值（dB）
+  gain_auto_max: 18.0                # 自动增益最大值（dB）
+  gamma: 1.0                         # Gamma 校正，1.0 表示关闭
+  balance_ratio_red: 1.0             # 手动白平衡 - 红通道系数
+  balance_ratio_blue: 1.0            # 手动白平衡 - 蓝通道系数
+  white_balance_auto: false          # 是否启用自动白平衡
+
+  # 触发与 IO ---------------------------------------------------------------- #
+  trigger_mode: "Off"                # 触发模式 Off/On
+  trigger_source: "Line0"            # 触发源（Line0/Software/FrequencyConverter 等）
+  trigger_selector: "FrameStart"     # 触发选择 FrameStart/AcquisitionStart...
+  trigger_activation: "RisingEdge"   # 触发沿 RisingEdge/FallingEdge
+  line_selector: "Line0"             # 配置的线路编号
+  line_mode: "Output"                # 线路模式 Input/Output
+  line_inverter: false               # 是否反向线路电平
+
+  # GigE Vision（GVSP/GVCP）-------------------------------------------------- #
+  gev_packet_size: 1500              # SCPS 包大小，需与交换机/NIC 匹配，9000 为 Jumbo
+  gev_packet_delay: 4000             # 包间隔（ns），调大可缓解丢包
+  gev_stream_channel_selector: 0     # 选定的数据流通道
+  gev_gvsp_extended_id_mode: false   # 是否启用 Extended IDs（多目标时可打开）
+  gev_heartbeat_timeout: 1000        # 心跳超时（ms），防止长时间无通讯断开
+  stream_buffer_count: 16            # Aravis 流缓冲区数量
+  stream_buffer_size: null           # 指定缓冲区大小（字节），null 表示默认
+  stream_buffer_handling: "NewestOnly"  # 缓冲策略：OldestFirst/NewestFirst/NewestOnly
+  stream_retransmission: true        # 是否启用数据重传（Aravis 0.8+）
+  stream_packet_resend_timeout_ms: 50  # 重传超时（ms），仅在启用重传时生效
+
+  # 诊断与调试 --------------------------------------------------------------- #
+  chunk_enable: false                # 是否启用 Chunk 数据输出
+  chunk_selectors: []                # 启用的 Chunk 列表，例如 ["Timestamp", "LineStatusAll"]
+  stats_log_interval: 5.0            # 统计日志输出间隔（秒），0 表示不输出
 
 network:
-  interface: "enP8p1s0"
-  host_ip: "192.168.100.1"
-  camera_ip: "192.168.100.10"
-  mtu: 9000
+  interface: "enP8p1s0"              # 主机网卡名称
+  host_ip: "192.168.100.1"           # 主机静态 IP
+  camera_ip: "192.168.100.10"        # 相机静态 IP
+  mtu: 9000                          # 网卡 MTU，需与 gev_packet_size 保持一致
+  rx_ring: 4096                      # ethtool -G RX ring 深度
+  tx_ring: 1024                      # ethtool -G TX ring 深度
+  enable_gro: false                  # 是否开启 GRO（部分场景需关闭以降低延迟）
+  enable_lro: false                  # 是否开启 LRO（大帧合并，可能影响延迟）
+  enable_ntuple: false               # 是否开启 ntuple 过滤
+  rss: false                         # 是否启用接收侧 HASH（多核分发）
 
 notes:
-  - "使用 arv-tool-0.8 gvcp discover 校验设备"
-  - "若像素格式不是 BayerRG8，更新 pixel_format 并调整处理逻辑"
+  - "使用 `arv-tool-0.8 gvcp discover` 校验设备连通性"
+  - "变更 GigE 参数前确认交换机/NIC 支持对应 MTU 与重传"
+  - "海康 GigE 机型建议配合官方 SDK 核实特性名称，避免拼写错误"
