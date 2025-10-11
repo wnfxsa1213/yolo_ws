@@ -44,13 +44,13 @@
 
 | 配置项 | 当前状态 | 优先级 | 说明 |
 |--------|----------|--------|------|
-| `control.pitch.max_accel` / `control.yaw.max_accel` | 预留字段，CommandSmoother 尚未读取 | **P1** | 限制云台角加速度，需在指令平滑链路中实现，避免瞬时跃迁 |
+| `control.pitch.max_accel` / `control.yaw.max_accel` | ✅ 已接入 CommandSmoother | **P1** | 根据配置限制云台角加速度，避免指令突变 |
 | `tracking.smoothing_window` | 未使用 | **P2** | 计划用于窗口化平滑检测框，目前逻辑采用指数平滑 |
 | `performance.enable_gpu_preprocess` | 未使用 | **P2** | 预处理仍在 CPU 执行，Phase 2 评估 GPU/NPP 管线再落地 |
 | `performance.num_cuda_streams` | 未使用 | **P2** | TensorRT 仍使用单流，后续多流并发时启用 |
 | `performance.buffer_pool_size` | 未使用 | **P3** | 预留显存池参数，待多 Buffer 管线落地后开启 |
-| `debug.save_detections` | 未使用 | **P1** | 调试时期望保存检测结果，需添加保存逻辑 |
-| `debug.profile_performance` | 未使用 | **P1** | 需接入 profiler 开关，输出阶段耗时与统计 |
+| `debug.save_detections` | ✅ 已实现 | **P1** | 调试时可按配置落盘检测结果，位于 `paths.detections_dir` |
+| `debug.profile_performance` | ✅ 已实现 | **P1** | 可通过配置开关输出性能计时并生成报告 |
 
 ---
 

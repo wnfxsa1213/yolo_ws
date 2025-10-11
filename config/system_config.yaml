@@ -40,11 +40,11 @@ serial:
 control:
   pitch:
     max_velocity: 30.0       # PITCH 轴最大角速度 (deg/s)
-    max_accel: 300.0          # TODO(P1): PITCH 轴最大角加速度，尚未在 CommandSmoother 中落实
+    max_accel: 300.0         # PITCH 轴最大角加速度 (deg/s²)，限制指令突变
     limits: [-90.0, 90.0]     # PITCH 轴安全范围 (deg)
   yaw:
     max_velocity: 200.0       # YAW 轴最大角速度 (deg/s)
-    max_accel: 45.0          # TODO(P1): YAW 轴最大角加速度，待实现
+    max_accel: 45.0           # YAW 轴最大角加速度 (deg/s²)，限制指令突变
     limits: [-180.0, 180.0]   # YAW 轴安全范围 (deg)
   smoothing:
     alpha: 0.6                # 指令一阶低通滤波权重 (0~1)

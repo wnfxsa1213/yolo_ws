@@ -478,6 +478,34 @@ class AravisCamera(CameraInterface):
         if summary:
             logger.info("Aravis 流统计: %s", summary)
 
+    def get_stream_statistics(self) -> Dict[str, float]:
+        if self._stream is None:
+            raise CameraError("流未初始化，无法获取统计数据")
+        getter = None
+        for attr in ("get_statistics", "get_stream_statistics"):
+            getter = getattr(self._stream, attr, None)
+            if getter is not None:
+                break
+        if getter is None:
+            raise CameraError("当前 Aravis 版本不支持获取流统计")
+        stats_obj = getter()
+        summary: Dict[str, float] = {}
+        if isinstance(stats_obj, dict):
+            for key, value in stats_obj.items():
+                if isinstance(value, (int, float)):
+                    summary[key] = value
+        else:
+            for key in dir(stats_obj):
+                if key.startswith("_"):
+                    continue
+                try:
+                    value = getattr(stats_obj, key)
+                except AttributeError:
+                    continue
+                if isinstance(value, (int, float)):
+                    summary[key] = value
+        return summary
+
     # --- CameraInterface ---
     def open(self) -> bool:
         if self._is_open:
@@ -782,12 +810,18 @@ class AravisCamera(CameraInterface):
                 self._camera.stop_acquisition()
             self._is_open = False
         finally:
-            if self._stream and hasattr(self._stream, "disconnect"):
-                for handler_id, _ in self._stream_handlers:
+            if self._stream:
+                if hasattr(self._stream, "set_emit_signals"):
                     try:
-                        self._stream.disconnect(handler_id)
-                    except Exception:  # pragma: no cover - best effort
-                        pass
+                        self._stream.set_emit_signals(False)
+                    except _ARAVIS_COMMON_ERRORS as exc:
+                        logger.debug("关闭 emit_signals 失败(%s)，忽略。", exc)
+                if hasattr(self._stream, "disconnect"):
+                    for handler_id, _ in self._stream_handlers:
+                        try:
+                            self._stream.disconnect(handler_id)
+                        except Exception:  # pragma: no cover - best effort
+                            pass
             self._stream_handlers.clear()
             self._camera = None
             self._device = None

@@ -74,6 +74,7 @@ class DetectionBox:
 @dataclass
 class AxisFilterConfig:
     max_velocity: float
+    max_accel: float
     limits: Tuple[float, float]
 
 
@@ -172,6 +173,7 @@ class CommandSmoother:
         smoothing: SmoothingConfig
         value: Optional[float] = None
         time: Optional[float] = None
+        velocity: Optional[float] = None
 
     def __init__(
         self,
@@ -202,11 +204,20 @@ class CommandSmoother:
         if prev_value is None or prev_time is None:
             filtered = target
             changed = True
+            prev_velocity = 0.0
         else:
             dt = max(now - prev_time, 1e-3)
             if cfg.max_velocity > 0:
                 max_step = cfg.max_velocity * dt
                 target = self._clamp(target, prev_value - max_step, prev_value + max_step)
+            prev_velocity = getattr(state, "velocity", 0.0) or 0.0
+            if cfg.max_accel > 0:
+                desired_velocity = (target - prev_value) / dt
+                max_delta_v = cfg.max_accel * dt
+                min_v = prev_velocity - max_delta_v
+                max_v = prev_velocity + max_delta_v
+                clamped_velocity = self._clamp(desired_velocity, min_v, max_v)
+                target = prev_value + clamped_velocity * dt
             alpha = self._clamp(smoothing.alpha, 0.0, 1.0)
             candidate = alpha * target + (1.0 - alpha) * prev_value
             if abs(candidate - prev_value) < smoothing.deadband:
@@ -214,6 +225,9 @@ class CommandSmoother:
             else:
                 filtered = candidate
                 changed = True
+            state.velocity = (filtered - prev_value) / dt
+        if state.value is None:
+            state.velocity = getattr(state, "velocity", 0.0)
         state.value = filtered
         state.time = now
         return filtered, changed
@@ -231,6 +245,7 @@ class CommandSmoother:
         for state in self._states.values():
             state.value = None
             state.time = None
+            state.velocity = None
 
 
 # --------------------------------------------------------------------------- #
@@ -317,6 +332,7 @@ def make_command_smoother(cfg: ConfigManager) -> CommandSmoother:
             low, high = default_limits
         return AxisFilterConfig(
             max_velocity=float(raw.get("max_velocity", 0.0)),
+            max_accel=float(raw.get("max_accel", 0.0)),
             limits=(low, high),
         )
 

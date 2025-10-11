@@ -101,12 +101,19 @@ def run(args: argparse.Namespace) -> None:
             if args.show and not preview_frame(image):
                 break
     finally:
+        stats = None
+        try:
+            stats = cam.get_stream_statistics()
+        except Exception as exc:  # pragma: no cover - 统计获取失败不致命
+            logger.warning("获取流统计失败: %s", exc)
         cam.close()
         if args.show and cv2 is not None:
             cv2.destroyAllWindows()
     duration = time.time() - start
     if captured:
         logger.info("平均FPS: %.2f", captured / duration)
+    if stats:
+        logger.info("流统计: %s", {key: int(value) for key, value in stats.items()})
 
 
 def build_parser() -> argparse.ArgumentParser:

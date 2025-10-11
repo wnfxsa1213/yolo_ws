@@ -1,71 +1,82 @@
 aravis:
-  # 设备选择与输出格式 --------------------------------------------------------- #
-  device_id: null                    # 传 None 默认使用首个在线设备，填写序列号可精确锁定
-  pixel_format: "BayerGB8"           # 输出像素格式，支持 BayerGB8/BayerRG8/RGB8/BGR8/Mono8 等
-  width: 640                         # 水平分辨率（像素）
-  height: 640                        # 垂直分辨率（像素）
-  offset_x: 0                        # ROI 起始 X（像素），需与 width 配合使用
-  offset_y: 0                        # ROI 起始 Y（像素）
-  binning: 1                         # 传感器硬件合并像素（>=1）
-  decimation: 1                      # 采样抽取比率（>=1）
-  frame_rate: 60.0                   # 目标帧率 (FPS)，部分机型需关闭自动曝光才能生效
+  # --------------------------------------------------------------------------- #
+  # 设备选择 & 输出格式
+  # --------------------------------------------------------------------------- #
+  device_id: null                    # 连接哪台相机：null=自动选第一台在线设备；建议填序列号避免串线
+  pixel_format: "BayerGB8"           # 图像像素格式：BayerGB8/BayerRG8/RGB8/BGR8/Mono8 等，需与软件解码一致
+  width: 640                         # 输出宽度（像素），超出相机支持范围会被自动裁剪
+  height: 640                        # 输出高度（像素），搭配 offset_x/offset_y 控制 ROI
+  offset_x: 0                        # 取景窗口左上角 X 偏移（像素），0 表示不偏移
+  offset_y: 0                        # 取景窗口左上角 Y 偏移（像素），0 表示不偏移
+  binning: 1                         # 传感器像素合并：1=关闭；2=2x2 合并，提亮降噪但牺牲分辨率
+  decimation: 1                      # 采样抽取：1=逐像素，2=隔行/隔列丢弃，可换取更高 FPS
+  frame_rate: 50.0                   # 目标帧率（Hz），网络拥塞时可适当下调
 
-  # 曝光与增益 --------------------------------------------------------------- #
-  exposure_us: 8000                  # 手动曝光时间（微秒）
-  exposure_auto: "Off"               # 自动曝光模式 Off/Once/Continuous
-  auto_exposure: false               # 兼容旧逻辑：True 等价于 Continuous
-  exposure_auto_min: 1000            # 自动曝光最小值（微秒）
-  exposure_auto_max: 20000           # 自动曝光最大值（微秒）
-  exposure_auto_target: 0.4          # 自动曝光亮度目标 (0.0~1.0)，部分机型支持
-  gain_db: 6.0                       # 手动增益（dB）
-  gain_auto: "Off"                   # 自动增益模式 Off/Once/Continuous
-  auto_gain: false                   # 兼容旧逻辑：True 等价于 Continuous
-  gain_auto_min: 0.0                 # 自动增益最小值（dB）
-  gain_auto_max: 18.0                # 自动增益最大值（dB）
-  gamma: 1.0                         # Gamma 校正，1.0 表示关闭
-  balance_ratio_red: 1.0             # 手动白平衡 - 红通道系数
-  balance_ratio_blue: 1.0            # 手动白平衡 - 蓝通道系数
-  white_balance_auto: false          # 是否启用自动白平衡
+  # --------------------------------------------------------------------------- #
+  # 曝光 / 增益 / 白平衡
+  # --------------------------------------------------------------------------- #
+  exposure_us: 3500                  # 手动曝光时间（微秒），滚动快门情况下应小于帧周期
+  exposure_auto: "Off"             # 自动曝光模式：Off/Once/Continuous
+  auto_exposure: false               # 兼容旧逻辑（遗留字段），等价于 exposure_auto="Continuous"
+  exposure_auto_min: 500            # 自动曝光下限（微秒），避免过曝
+  exposure_auto_max: 8000            # 自动曝光上限（微秒），避免过暗
+  exposure_auto_target: 0.4          # 自动曝光亮度目标 (0.0~1.0)，相当于直方图目标值
+  gain_db: 4.0                       # 手动增益（dB），噪声随增益线性上升，建议越小越好
+  gain_auto: "Off"                # 自动增益模式：Off/Once/Continuous
+  auto_gain: false                   # 兼容旧逻辑（遗留字段），等价于 gain_auto="Continuous"
+  gain_auto_min: 0.0                 # 自动增益下限（dB）
+  gain_auto_max: 12.0                # 自动增益上限（dB），过大画面将颗粒化
+  gamma: 1.0                         # Gamma 校正，1.0 表示禁用；适当调高可压暗部提升亮度
+  balance_ratio_red: 1.0             # 手动白平衡：红通道系数
+  balance_ratio_blue: 1.0            # 手动白平衡：蓝通道系数
+  white_balance_auto: true           # 是否启用自动白平衡；慢速环境可关，灯光频繁变化时建议开
 
-  # 触发与 IO ---------------------------------------------------------------- #
-  trigger_mode: "Off"                # 触发模式 Off/On
-  trigger_source: "Line0"            # 触发源（Line0/Software/FrequencyConverter 等）
-  trigger_selector: "FrameStart"     # 触发选择 FrameStart/AcquisitionStart...
-  trigger_activation: "RisingEdge"   # 触发沿 RisingEdge/FallingEdge
-  line_selector: "Line0"             # 配置的线路编号
-  line_mode: "Output"                # 线路模式 Input/Output
-  line_inverter: false               # 是否反向线路电平
+  # --------------------------------------------------------------------------- #
+  # 触发 / IO 线路
+  # --------------------------------------------------------------------------- #
+  trigger_mode: "Off"                # 触发模式：Off=自由运行，On=依赖外部触发
+  trigger_source: "Line0"            # 触发源：Line0/Software/FrequencyConverter 等
+  trigger_selector: "FrameStart"     # 触发作用对象：FrameStart/AcquisitionStart 等
+  trigger_activation: "RisingEdge"   # 触发沿：RisingEdge/FallingEdge
+  line_selector: "Line0"             # 配置哪条物理线路
+  line_mode: "Output"                # 线路模式：Input=作为触发输入，Output=输出准备信号
+  line_inverter: false               # 是否翻转线路电平，true 时逻辑电平取反
 
-  # GigE Vision（GVSP/GVCP）-------------------------------------------------- #
-  gev_packet_size: 1500              # SCPS 包大小，需与交换机/NIC 匹配，9000 为 Jumbo
-  gev_packet_delay: 4000             # 包间隔（ns），调大可缓解丢包
-  gev_stream_channel_selector: 0     # 选定的数据流通道
-  gev_gvsp_extended_id_mode: false   # 是否启用 Extended IDs（多目标时可打开）
-  gev_heartbeat_timeout: 1000        # 心跳超时（ms），防止长时间无通讯断开
-  stream_buffer_count: 16            # Aravis 流缓冲区数量
-  stream_buffer_size: null           # 指定缓冲区大小（字节），null 表示默认
+  # --------------------------------------------------------------------------- #
+  # GigE Vision 传输（GVSP/GVCP）
+  # --------------------------------------------------------------------------- #
+  gev_packet_size: 1500              # GVSP 包大小：1500=标准以太网；9000=jumbo frame，需链路全支持
+  gev_packet_delay: 120000        # 包间隔（ns），适当增大可削峰填谷减少丢包
+  gev_stream_channel_selector: 0     # 流通道编号，单机默认 0，多流时可改
+  gev_gvsp_extended_id_mode: false   # 是否启用 GVSP 扩展 ID；多目标/多流时建议打开
+  gev_heartbeat_timeout: 1000        # GVCP 心跳超时（ms），控制端无响应超过该值将断连
+  stream_buffer_count: 24            # Aravis 预分配缓冲个数，提高带宽抖动容忍度
+  stream_buffer_size: null           # 单个缓冲大小（字节），null 表示按 payload 自动估算
   stream_buffer_handling: "NewestOnly"  # 缓冲策略：OldestFirst/NewestFirst/NewestOnly
-  stream_retransmission: true        # 是否启用数据重传（Aravis 0.8+）
-  stream_packet_resend_timeout_ms: 50  # 重传超时（ms），仅在启用重传时生效
+  stream_retransmission: true        # 是否启用数据重传（Aravis >=0.8 支持）
+  stream_packet_resend_timeout_ms: 200    #传超时（ms），过小会导致频繁重试，过大则重传延迟
 
-  # 诊断与调试 --------------------------------------------------------------- #
-  chunk_enable: false                # 是否启用 Chunk 数据输出
-  chunk_selectors: []                # 启用的 Chunk 列表，例如 ["Timestamp", "LineStatusAll"]
-  stats_log_interval: 5.0            # 统计日志输出间隔（秒），0 表示不输出
+  # --------------------------------------------------------------------------- #
+  # 诊断 & 调试
+  # --------------------------------------------------------------------------- #
+  chunk_enable: false                # 是否启用 Chunk 数据（在图像附带额外元信息）
+  chunk_selectors: []                # 需要输出的 Chunk 名称，如 ["Timestamp", "LineStatusAll"]
+  stats_log_interval: 1.0            # 采集统计打印周期（秒），0 表示不打印
 
 network:
-  interface: "enP8p1s0"              # 主机网卡名称
-  host_ip: "192.168.100.1"           # 主机静态 IP
-  camera_ip: "192.168.100.10"        # 相机静态 IP
-  mtu: 9000                          # 网卡 MTU，需与 gev_packet_size 保持一致
-  rx_ring: 4096                      # ethtool -G RX ring 深度
-  tx_ring: 1024                      # ethtool -G TX ring 深度
-  enable_gro: false                  # 是否开启 GRO（部分场景需关闭以降低延迟）
-  enable_lro: false                  # 是否开启 LRO（大帧合并，可能影响延迟）
-  enable_ntuple: false               # 是否开启 ntuple 过滤
-  rss: false                         # 是否启用接收侧 HASH（多核分发）
+  interface: "enP8p1s0"              # 主机使用的物理网卡名，ip addr 可查看
+  host_ip: "192.168.100.1"           # 主机静态 IP（需要自行通过 netplan/NetworkManager 配置）
+  camera_ip: "192.168.100.10"        # 相机静态 IP，需与 host_ip 同网段
+  mtu: 9000                          # 网卡 MTU，使用 jumbo frame 时设置为 9000，否则保持 1500
+  rx_ring: 1024                      # ethtool -G RX 环形缓冲长度，越大越抗突发流量
+  tx_ring: 1024                      # ethtool -G TX 环形缓冲长度，发送排队容量
+  enable_gro: false                  # 是否启用 GRO（大包聚合），低延迟场景建议关闭
+  enable_lro: false                  # 是否启用 LRO（仅限服务器网卡），可能引入延迟
+  enable_ntuple: false               # 是否启用 ntuple 过滤，可按需加速多流
+  rss: false                         # 是否启用接收侧多队列 (Receive Side Scaling)，多核分发
 
 notes:
-  - "使用 `arv-tool-0.8 gvcp discover` 校验设备连通性"
-  - "变更 GigE 参数前确认交换机/NIC 支持对应 MTU 与重传"
-  - "海康 GigE 机型建议配合官方 SDK 核实特性名称，避免拼写错误"
+  - "先用 `arv-tool-0.8 gvcp discover` 验证相机在线状态"
+  - "调整 MTU 前确认交换机/网卡都支持 jumbo frame，否则改回 1500"
+  - "Aravis 特性名可能与厂商手册略有差异，参数不生效时对照原厂文档核实"
+  - "滚动快门避免撕裂：降低曝光、适度调大 gev_packet_delay、确保重传开启并关注 stats_log_interval 输出"
