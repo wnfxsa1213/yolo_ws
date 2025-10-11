@@ -208,12 +208,20 @@ python src/main.py --config config/system_config.yaml
 
 ### 运行单元测试
 ```bash
-# 所有测试
-pytest tests/ -v
+# 所有测试（推荐用 python -m pytest 避免 PATH 幻觉）
+python -m pytest tests/ -v
 
-# 特定模块
-pytest tests/test_camera.py -v
-pytest tests/test_serial.py -v
+# 核心单元测试
+python -m pytest tests/test_logger_module.py -q
+python -m pytest tests/test_config_manager.py -q
+
+# 旧的硬件相关测试
+python -m pytest tests/test_camera.py -v
+python -m pytest tests/test_serial.py -v
+
+# 脚本包装（内部会自动调用 pytest）
+python scripts/test_logger.py
+python scripts/test_config.py
 ```
 
 ### 性能基准测试
