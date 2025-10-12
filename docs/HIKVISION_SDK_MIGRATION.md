@@ -126,230 +126,64 @@ class CameraInterface(ABC):
         pass
 ```
 
-### 2.3 HikCamera 实现规划
+### 2.3 HikCamera 实现概览
 
-#### **核心类结构**
+当前 `src/vision/hikvision.py` 已经完成以下能力：
 
-```python
-# src/vision/hikvision.py
-
-from typing import Dict, Optional, Tuple
-import numpy as np
-from .camera import CameraInterface, CameraError
-
-class HikCamera(CameraInterface):
-    """
-    海康威视相机实现（基于 MVS SDK）
-
-    依赖：
-        - Docker 容器已部署 MVS SDK
-        - MvImport 模块可用（海康官方 Python 绑定）
-    """
-
-    def __init__(self, config: Dict[str, Any]) -> None:
-        """
-        初始化海康相机
-
-        Args:
-            config: 相机配置字典
-                - device_id: 相机序列号（可选，None 则自动选择）
-                - width: 分辨率宽度
-                - height: 分辨率高度
-                - fps: 帧率
-                - exposure_us: 曝光时间（微秒）
-                - gain_db: 增益（dB）
-                - pixel_format: 像素格式（BayerGB8 等）
-        """
-        super().__init__(name="HikCamera")
-        self._config = config
-        self._device = None      # MVS 设备对象
-        self._is_open = False
-        self._width = 0
-        self._height = 0
-
-    def open(self) -> bool:
-        """
-        打开相机设备
-
-        流程：
-            1. 枚举设备（MV_CC_EnumDevices）
-            2. 根据 device_id 或默认选择第一个
-            3. 创建设备句柄（MV_CC_CreateHandle）
-            4. 打开设备（MV_CC_OpenDevice）
-            5. 配置参数（分辨率、帧率、曝光等）
-            6. 开始采集（MV_CC_StartGrabbing）
-        """
-        pass
-
-    def close(self) -> None:
-        """
-        关闭相机设备
-
-        流程：
-            1. 停止采集（MV_CC_StopGrabbing）
-            2. 关闭设备（MV_CC_CloseDevice）
-            3. 销毁句柄（MV_CC_DestroyHandle）
-        """
-        pass
-
-    def capture(self, timeout: float = 0.5) -> Tuple[Optional[np.ndarray], float]:
-        """
-        采集一帧图像
-
-        流程：
-            1. 调用 MV_CC_GetImageBuffer（超时设置）
-            2. 检查返回状态
-            3. 转换为 numpy 数组
-            4. Bayer → BGR 转换（如果是 Bayer 格式）
-            5. 释放缓冲区（MV_CC_FreeImageBuffer）
-
-        Returns:
-            (image, timestamp_ms)
-            - image: BGR 格式，shape=(H,W,3), dtype=uint8
-            - timestamp_ms: 当前时间戳
-        """
-        pass
-
-    def get_intrinsics(self) -> Dict[str, float]:
-        """返回相机内参（暂返回估算值，待标定）"""
-        return {
-            "fx": 1000.0,
-            "fy": 1000.0,
-            "cx": self._width / 2.0,
-            "cy": self._height / 2.0,
-        }
-
-    def set_exposure(self, exposure_us: float) -> bool:
-        """设置曝光时间（调用 MV_CC_SetFloatValue）"""
-        pass
-
-    def set_gain(self, gain_db: float) -> bool:
-        """设置增益（调用 MV_CC_SetFloatValue）"""
-        pass
-
-    # --- 内部辅助方法 ---
-
-    def _enum_devices(self) -> list:
-        """枚举所有海康相机"""
-        pass
-
-    def _configure_device(self) -> None:
-        """配置相机参数（分辨率、帧率等）"""
-        pass
-
-    def _bayer_to_bgr(self, raw_data: np.ndarray, pixel_format: str) -> np.ndarray:
-        """Bayer 格式转 BGR"""
-        pass
-```
+- **防御式配置校验**：`HikCameraConfig` 在 `__post_init__` 中验证 IP、超时与缓冲区参数，杜绝低级配置错误传入运行期。
+- **SDK 生命周期管理**：模块级引用计数确保 `MV_CC_Initialize`/`MV_CC_Finalize` 成对调用，可同时支持多实例运行。
+- **设备枚举与打开**：按配置 IP 精确匹配 Gige 相机，完成句柄创建、独占打开、最优包长设置以及触发关闭。
+- **运行参数应用**：初始化阶段自动缓存分辨率、Payload Size，并尝试配置曝光/增益默认值与 SDK 日志目录。
+- **取流与转换**：`capture()` 使用 `MV_CC_GetImageBuffer` 获取帧，基于像素格式完成 Bayer→BGR、RGB→BGR 或 Mono8 转换，返回 `np.ndarray` 与毫秒时间戳。
+- **运行时调节**：`set_exposure`/`set_gain` 支持在相机打开后实时调整，并在关闭前保持最新配置。
+- **异常处理**：所有 SDK 返回码均包装为 `CameraError` 或日志输出，失败时自动释放句柄并回收 SDK。
 
 ---
 
 ## 📝 三、开发任务清单
 
-### 阶段 1：基础框架搭建 ⏳
+### 阶段 0：容器与设备准备 ✅
 
-**任务：** 创建 `HikCamera` 类骨架
+- Docker 容器 `mvs-workspace` 运行镜像 `hikvision-mvs:arm64`，通过 `/etc/profile.d/mvs_sdk.sh` 统一注入 `MVCAM_SDK_PATH=/opt/MVS`、`PYTHONPATH=/opt/MVS/Samples/aarch64/Python/MvImport`、`LD_LIBRARY_PATH=/opt/MVS/lib/aarch64:/opt/MVS/lib`。
+- 依赖安装：`apt-get update && apt-get install -y python3 python3-pip python3-venv python3-dev`，确保 Python 3.10 解释器与 pip 工具可用。
+- SDK 自检：`python3 -c "import MvCameraControl_class"` 返回 `import_ok`；`python3 /opt/MVS/Samples/aarch64/Python/GrabImage/GrabImage.py` 能在无 GUI 环境下稳定抓帧（1280x1024，PixelType=0x108000a）。
+- 网络配置：宿主机网卡 `enP8p1s0` 固定 `192.168.100.1/24`，相机通过 `MV_GIGE_ForceIpEx` 强制写入 `192.168.100.10/24`，网关设为 `0.0.0.0` 以避免地址冲突。
+- 调试提示：示例脚本首次启动时的 `XOpenDisplay Fail` 可忽略，它仅提示 GUI 依赖缺失，对命令行抓帧无影响。
+
+### 阶段 1：基础框架搭建 ✅
+
+**成果：** `HikCameraConfig` + `HikCamera` 构造流程
 
 **文件：** `src/vision/hikvision.py`
 
-**输出：**
-- [ ] 创建类定义
-- [ ] 实现 `__init__`（参数验证）
-- [ ] 占位实现所有抽象方法（抛出 `NotImplementedError`）
-- [ ] 导入依赖检查（MVS SDK 可用性）
-
-**验证：**
-```python
-from vision.hikvision import HikCamera
-
-config = {"device_id": None, "width": 640, "height": 480}
-camera = HikCamera(config)
-# 不报错说明骨架正确
-```
+**要点：**
+- [x] dataclass 校验 IP/超时/缓冲区参数，提前拦截配置错误
+- [x] 懒加载 SDK，缺失时抛出 `CameraError` 并提示修复
+- [x] 保留 `config` 只读副本（`replace` + 深拷贝内参），防止外部写入
+- [x] 初始化阶段缓存默认分辨率/负载，便于后续图像转换
 
 ---
 
-### 阶段 2：设备枚举与打开 🔍
+### 阶段 2：设备枚举与打开 ✅
 
-**任务：** 实现 `open()` 方法
+**成果：** `open()/close()` 与 SDK 生命周期
 
-**关键 SDK 函数：**
-```python
-from MvCameraControl_class import *
-
-# 1. 枚举设备
-deviceList = MV_CC_DEVICE_INFO_LIST()
-ret = MvCamera.MV_CC_EnumDevices(MV_GIGE_DEVICE, deviceList)
-
-# 2. 创建句柄
-cam = MvCamera()
-ret = cam.MV_CC_CreateHandle(deviceList.pDeviceInfo[0])
-
-# 3. 打开设备
-ret = cam.MV_CC_OpenDevice(MV_ACCESS_Exclusive, 0)
-```
-
-**实现要点：**
-- ✅ 检查 SDK 返回值（非 0 即错误）
-- ✅ 处理无设备情况（返回 `False`）
-- ✅ 根据 `device_id` 匹配设备（序列号）
-- ✅ 配置参数（分辨率、帧率、曝光）
-- ✅ 启动采集（`MV_CC_StartGrabbing`）
-
-**验证：**
-```python
-camera = HikCamera(config)
-assert camera.open() == True
-print("相机打开成功！")
-camera.close()
-```
+- [x] 引入 `_SDK_REFCOUNT`，保证 `MV_CC_Initialize/Finalize` 成对调用
+- [x] 基于 `device_ip` 精确匹配 Gige 相机，异常时抛出 `CameraError`
+- [x] 自动设置最优包长、关闭触发、可选配置 SDK 日志路径
+- [x] `close()` 统一封装停流/关设备/销毁句柄逻辑，异常容错
 
 ---
 
-### 阶段 3：图像采集实现 📷
+### 阶段 3：图像采集实现 ✅
 
-**任务：** 实现 `capture()` 方法
+**成果：** `capture()`、像素转换与运行时调节
 
-**关键 SDK 函数：**
-```python
-# 获取图像缓冲区
-stFrameInfo = MV_FRAME_OUT_INFO_EX()
-pData = (c_ubyte * stFrameInfo.nWidth * stFrameInfo.nHeight)()
-ret = cam.MV_CC_GetOneFrameTimeout(pData, len(pData), stFrameInfo, timeout_ms)
-```
-
-**实现要点：**
-- ✅ 超时转换（秒 → 毫秒）
-- ✅ 检查返回值（超时返回 `(None, 0.0)`）
-- ✅ 转换为 numpy 数组
-- ✅ Bayer → BGR 转换（使用 `cv2.cvtColor`）
-- ✅ 内存拷贝（避免悬垂指针）
-
-**Bayer 转换示例：**
-```python
-def _bayer_to_bgr(self, raw_data: np.ndarray, pixel_format: str) -> np.ndarray:
-    """Bayer 格式转 BGR"""
-    if pixel_format == "BayerGB8":
-        return cv2.cvtColor(raw_data, cv2.COLOR_BAYER_GB2BGR)
-    elif pixel_format == "BayerRG8":
-        return cv2.cvtColor(raw_data, cv2.COLOR_BAYER_RG2BGR)
-    elif pixel_format == "BayerGR8":
-        return cv2.cvtColor(raw_data, cv2.COLOR_BAYER_GR2BGR)
-    elif pixel_format == "BayerBG8":
-        return cv2.cvtColor(raw_data, cv2.COLOR_BAYER_BG2BGR)
-    else:
-        raise ValueError(f"不支持的像素格式: {pixel_format}")
-```
-
-**验证：**
-```python
-camera.open()
-image, timestamp = camera.capture(timeout=1.0)
-assert image is not None
-assert image.shape == (480, 640, 3)  # BGR 格式
-print(f"采集成功！时间戳: {timestamp}")
-camera.close()
-```
+- [x] `MV_CC_GetImageBuffer` + `MV_CC_FreeImageBuffer` 取流并拷贝数据，规避悬垂指针
+- [x] 按 `enPixelType` 自动适配 Bayer/RGB/Mono8，OpenCV 存在时完成 Bayer→BGR 转换
+- [x] 返回值统一为 `(np.ndarray|None, timestamp_ms)`，超时/异常保持 `(None, 0.0)` 兼容接口
+- [x] `set_exposure`/`set_gain` 支持在线修改，失败时保留日志提示后续排查
+- [x] 未识别像素格式 fallback 为原始数据同时打印调试信息，确保流程不中断
 
 ---
 
