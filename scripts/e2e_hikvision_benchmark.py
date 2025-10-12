@@ -13,6 +13,8 @@ import time
 from pathlib import Path
 from typing import List, Tuple
 
+from utils.config import ConfigManager
+from vision.camera import AravisCamera
 from vision.hikvision_proxy import HikCameraProxy, HikCameraProxyConfig
 
 
@@ -28,7 +30,7 @@ def _percentile(samples: List[float], q: float) -> float:
 
 
 def benchmark(
-    proxy: HikCameraProxy, duration: float, timeout: float
+    camera, duration: float, timeout: float
 ) -> Tuple[float, float, float, float, float, float, float, float]:
     start = time.time()
     end = start + duration
@@ -40,7 +42,7 @@ def benchmark(
     while time.time() < end:
         attempts += 1
         iter_start = time.time()
-        frame, ts = proxy.capture(timeout=timeout)
+        frame, ts = camera.capture(timeout=timeout)
         iter_end = time.time()
         if frame is None:
             continue
@@ -72,19 +74,34 @@ def benchmark(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Hikvision E2E Benchmark")
+    parser = argparse.ArgumentParser(description="Hikvision/Aravis 基准测试")
     parser.add_argument("--socket", default="/tmp/hikvision.sock", help="Unix socket path")
+    parser.add_argument(
+        "--backend", choices=["proxy", "aravis"], default="proxy", help="测试后端类型"
+    )
+    parser.add_argument(
+        "--camera-config",
+        default="config/camera_config.yaml",
+        help="Aravis 配置文件路径（仅 backend=aravis 生效）",
+    )
     parser.add_argument("--duration", type=float, default=10.0, help="benchmark duration (seconds)")
     parser.add_argument("--timeout", type=float, default=0.5, help="per frame timeout (seconds)")
     parser.add_argument("--warmup", type=int, default=3, help="warmup frames")
     args = parser.parse_args()
 
-    cfg = HikCameraProxyConfig(socket_path=Path(args.socket))
-    proxy = HikCameraProxy(cfg)
-    proxy.open()
+    if args.backend == "proxy":
+        cfg = HikCameraProxyConfig(socket_path=Path(args.socket))
+        camera = HikCameraProxy(cfg)
+        camera.open()
+    else:
+        cfg_manager = ConfigManager(args.camera_config)
+        aravis_cfg = cfg_manager.get("aravis", expected_type=dict)
+        camera = AravisCamera(aravis_cfg)
+        if not camera.open():
+            raise RuntimeError("Aravis 相机打开失败")
     try:
         for _ in range(args.warmup):
-            proxy.capture(timeout=args.timeout)
+            camera.capture(timeout=args.timeout)
 
         (
             fps,
@@ -95,7 +112,7 @@ def main() -> None:
             p99,
             cpu,
             drop_rate,
-        ) = benchmark(proxy, args.duration, args.timeout)
+        ) = benchmark(camera, args.duration, args.timeout)
 
         print("=" * 50)
         print("  海康混合架构端到端基准结果")
@@ -111,7 +128,7 @@ def main() -> None:
         print(f"  丢帧率:       {drop_rate:.2f}%")
         print("=" * 50)
     finally:
-        proxy.close()
+        camera.close()
 
 
 if __name__ == "__main__":
