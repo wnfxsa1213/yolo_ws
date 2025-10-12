@@ -484,10 +484,21 @@ python scripts/benchmark_camera.py --backend hikvision --duration 60
 
 ---
 
+
+- [x] Stage4/5-5 混合架构拉通，开发脚本一键启动，并完成 640×640 基准测试 (FPS≈54.1, 延迟≈18.5ms)
+- [x] 新增 e2e 基准工具，支持 proxy/aravis 后端与延迟分位数、丢帧率统计
+- [x] docs 更新到 Phase5 状态，补充部署步骤、性能数据与风险总结
 ## ⚠️ 风险与缓解
 
 - **单点故障（容器服务崩溃）**：通过 `scripts/camera_server_supervisor.conf` 接入 supervisor/systemd，配合客户端退避重连与健康检查，降低停机风险。
 - **IPC 延迟抖动**：若发现 P95/P99 延迟上升，可考虑 pinned CPU affinity、实时调度，或升级为共享内存/ZeroMQ Transport。
+
+## 🆚 十、对比测试规划（Aravis vs Hikvision）
+
+- [ ] 当前暂缓，待混合架构稳定后再安排 10s/10min 对照压测
+- 目标：统一 640×640 场景，比较 FPS、延迟、丢帧率、CPU 占用
+- 准备：扩展 benchmark 脚本支持 aravis；校准 Aravis 配置与 YOLO 流程
+- 输出：对比表格 + 分位数统计，并记录容器/宿主机资源情况
 
 ## 🚀 九、后续扩展
 
