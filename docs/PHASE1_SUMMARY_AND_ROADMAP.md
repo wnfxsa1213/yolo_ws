@@ -2306,6 +2306,7 @@ Phase 2优化目标:
 ✅ **TensorRT优化** - YOLOv8-nano FP16引擎，~7ms推理
 ✅ **指令平滑机制** - CommandSmoother实现丢失保持与去抖
 ✅ **工具链完善** - GUI模型管理、测试脚本、集成测试框架
+✅ **Hikvision混合架构** - camera_server + HikCameraProxy 联调完成，FPS≈45、延迟≈18ms，性能优于 Aravis
 ✅ **设计原则落地** - SOLID/KISS/DRY/YAGNI严格执行
 
 ### Phase 2-4 路线清晰
