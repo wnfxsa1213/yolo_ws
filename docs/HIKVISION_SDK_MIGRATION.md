@@ -67,6 +67,34 @@
 └─────────────────────────────────────────────────────┘
 ```
 
+### 1.3 目标部署模式（混合架构）
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 Jetson Orin NX / 宿主机系统                   │
+├─────────────────────────────────────────────────────────────┤
+│  Python Application (main.py)                               │
+│      ↓                                                      │
+│  YOLO Inference (TensorRT)                                  │
+│      ↓                                                      │
+│  HikCamera Proxy (IPC 客户端)                               │
+│      ↓  Unix Socket / ZeroMQ / Shared Memory                │
+├────────────┬────────────────────────────────────────────────┤
+│ Docker: mvs-workspace                                       │
+│      ↓                                                      │
+│  camera_server.py  ← 图像采集服务                           │
+│      ↓                                                      │
+│  HikCamera (MVS SDK 调用，/opt/MVS)                         │
+│      ↓                                                      │
+│  Gige Cam @ 192.168.100.10                                  │
+└────────────┴────────────────────────────────────────────────┘
+```
+
+- **宿主机**：保留 TensorRT 推理、串口通信、主控逻辑以及任何依赖 JetPack 8.x/Ubuntu 22.04 的组件。
+- **容器 `mvs-workspace`**：仅承载海康 MVS SDK 及相关依赖，提供取流服务；与宿主机通过高效 IPC（Unix Domain Socket、ZeroMQ、共享内存等）传递帧数据。
+- **同步策略**：容器产出的 Python 包或 wheel 定期同步至宿主机，宿主机仅需运行时依赖即可，无需安装完整 SDK。
+- **优势**：避免 JetPack 版本冲突，隔离闭源 SDK，同步升级简单；性能损耗可以控制在 1–5%。
+
 ---
 
 ## 🏗️ 二、技术方案设计
@@ -187,81 +215,37 @@ class CameraInterface(ABC):
 
 ---
 
-### 阶段 4：参数配置实现 ⚙️
+### 阶段 4：容器相机服务 ⚙️（进行中）
 
-**任务：** 实现 `set_exposure()` 和 `set_gain()`
+**目标**：在 `mvs-workspace` 内实现 `camera_server.py`，将 `HikCamera` 封装为可复用的取流守护进程。
 
-**关键 SDK 函数：**
-```python
-# 设置曝光时间（微秒）
-ret = cam.MV_CC_SetFloatValue("ExposureTime", exposure_us)
-
-# 设置增益（dB）
-ret = cam.MV_CC_SetFloatValue("Gain", gain_db)
-
-# 设置分辨率
-ret = cam.MV_CC_SetIntValue("Width", width)
-ret = cam.MV_CC_SetIntValue("Height", height)
-
-# 设置帧率
-ret = cam.MV_CC_SetFloatValue("AcquisitionFrameRate", fps)
-```
-
-**实现要点：**
-- ✅ 参数范围验证（查询 Min/Max）
-- ✅ 返回 `True`/`False` 表示成功/失败
-- ✅ 日志记录（参数变化）
-
-**验证：**
-```python
-camera.open()
-assert camera.set_exposure(5000.0) == True  # 5ms 曝光
-assert camera.set_gain(10.0) == True        # 10dB 增益
-camera.close()
-```
+- [ ] 设计帧传输协议（帧编号、时间戳、像素格式、有效长度、图像数据）。
+- [ ] 提供曝光/增益调节命令通道，统一通过 IPC 下发并回传执行结果。
+- [ ] 选择 IPC 实现（Unix Domain Socket / ZeroMQ / 共享内存），并实现心跳、异常恢复及日志上报。
+- [ ] 编写 supervisor/systemd 配置，确保容器启动后自动拉起服务。
 
 ---
 
-### 阶段 5：集成与测试 🧪
+### 阶段 5：宿主机代理与业务集成 🧪
 
-**任务：** 修改 `main.py` 支持 `HikCamera`
+**目标**：宿主机 `main.py` 通过 `HikCameraProxy` 与容器服务交互，替换原 Aravis 链路。
 
-**修改点：** `main.py:init_camera()`
+- [ ] 新增 `camera.backend = "hikvision_proxy"` 配置选项，兼容 Aravis 与本地 HikCamera。
+- [ ] 实现 IPC 客户端，解包容器返回的帧并转换为 `np.ndarray`（BGR 或灰度）。
+- [ ] 梳理 YOLO/TensorRT 前处理，确保输入尺寸与色彩空间保持一致。
+- [ ] 定义超时与重连策略，防止相机异常阻塞主控制循环。
 
-```python
-# main.py:480-530
-def init_camera(
-    cfg: ConfigManager,
-    args: argparse.Namespace,
-    logger: logging.Logger,
-) -> Tuple[Optional["CameraInterface"], Tuple[int, int]]:
-    # ... 现有代码 ...
+---
 
-    # 新增：支持 HikCamera
-    camera_type = camera_cfg.get("type", "aravis")
+### 阶段 6：端到端验证与发布 🚀
 
-    if camera_type == "hikvision":
-        from vision.hikvision import HikCamera
+- [ ] 编写 `scripts/e2e_hikvision_benchmark.py`，测试 FPS、端到端延迟、CPU 占用。
+- [ ] 输出混合架构部署手册：容器构建、宿主机同步 `/opt/MVS`、服务启动顺序。
+- [ ] 对比 Aravis 方案，记录性能与稳定性结论，更新 `docs/PHASE1_SUMMARY_AND_ROADMAP.md`。
+- [ ] 规划 Phase 2：多相机、硬件触发、Web UI/远程监控等扩展路线。
 
-        hik_config = {
-            "device_id": camera_cfg.get("device_id", None),
-            "width": camera_cfg.get("resolution", [640, 640])[0],
-            "height": camera_cfg.get("resolution", [640, 640])[1],
-            "fps": camera_cfg.get("fps", 60),
-            "exposure_us": camera_cfg.get("exposure_us", 5000),
-            "gain_db": camera_cfg.get("gain_db", 0.0),
-            "pixel_format": camera_cfg.get("pixel_format", "BayerGB8"),
-        }
-        camera = HikCamera(hik_config)
-    elif camera_type == "aravis":
-        # 保持原有逻辑
-        from vision.camera import AravisCamera
-        camera = AravisCamera(...)
-    else:
-        raise ValueError(f"不支持的相机类型: {camera_type}")
-
-    # ... 其他代码保持不变 ...
-```
+---
+### 附录：本地集成参考（历史方案）
 
 **配置文件修改：** `config/system_config.yaml`
 
@@ -422,12 +406,13 @@ python scripts/benchmark_camera.py --backend hikvision --duration 60
 
 | 阶段 | 预计时间 | 说明 |
 |------|---------|------|
-| 阶段 1：框架搭建 | 0.5 天 | 创建类骨架 |
-| 阶段 2：设备打开 | 1 天 | 枚举、连接、配置 |
+| 阶段 1：框架搭建 | 0.5 天 | HikCameraConfig + 基础骨架 |
+| 阶段 2：设备打开 | 1 天 | 枚举、连接、初始化参数 |
 | 阶段 3：图像采集 | 1 天 | capture + Bayer 转换 |
-| 阶段 4：参数配置 | 0.5 天 | 曝光、增益设置 |
-| 阶段 5：集成测试 | 1 天 | main.py 集成 + 测试 |
-| **总计** | **4 天** | 预留缓冲时间 |
+| 阶段 4：容器服务 | 1 天 | camera_server.py + IPC 协议 |
+| 阶段 5：宿主代理 | 1 天 | HikCameraProxy 集成 YOLO |
+| 阶段 6：端到端验证 | 1 天 | 性能基准 + 部署手册 |
+| **总计** | **5.5 天** | 预留缓冲 + 风险缓冲 |
 
 ---
 
@@ -435,15 +420,15 @@ python scripts/benchmark_camera.py --backend hikvision --duration 60
 
 ### 功能验收
 - [ ] `HikCamera` 实现 `CameraInterface` 所有方法
-- [ ] 能够正常打开/关闭相机
-- [ ] 能够稳定采集图像（60 FPS @ 640x640）
-- [ ] 能够动态调整曝光和增益
+- [ ] 容器内 `camera_server.py` 可持续运行并响应命令
+- [ ] 宿主机代理能在 30 FPS 下稳定接收帧数据
+- [ ] 能够动态调整曝光和增益（IPC 往返）
 - [ ] Bayer → BGR 转换正确
 
 ### 性能验收
 - [ ] 采集帧率 ≥ 50 FPS（640x640）
-- [ ] 采集延迟 ≤ 20ms
-- [ ] 连续运行 1 小时无崩溃
+- [ ] IPC 往返延迟 ≤ 5 ms（平均）
+- [ ] 连续运行 1 小时无崩溃（容器 + 宿主机）
 - [ ] 丢帧率 ≤ 1%
 
 ### 代码质量
