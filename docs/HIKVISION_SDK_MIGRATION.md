@@ -244,8 +244,8 @@ class CameraInterface(ABC):
 
 - [x] 新增 `camera.type = "hikvision_proxy"` 配置项，可在主配置中切换代理模式。
 - [x] 实现 IPC 客户端（`HikCameraProxy`），可解包帧并转换为 `np.ndarray`（BGR/Mono）。
-- [ ] 梳理 YOLO/TensorRT 前处理，确保输入尺寸与色彩空间保持一致。
-- [ ] 定义超时与重连策略，防止相机异常阻塞主控制循环。
+- [x] 梳理 YOLO/TensorRT 前处理，确保输入尺寸与色彩空间保持一致。
+- [x] 定义超时与重连策略（capture 超时 0.5s，异常写入日志；必要时调用 request_stop()，未授权增强可纳入 Phase 2）。
 
 **代理接口草案：**
 - `HikCameraProxy.open()`：建立 Unix Socket 连接，完成握手与版本校验。
