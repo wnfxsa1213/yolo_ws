@@ -3,6 +3,7 @@
 """
 from .camera import AravisCamera, CameraError, CameraInterface, CameraManager
 from .hikvision import HikCamera, HikCameraConfig
+from .hikvision_proxy import HikCameraProxy, HikCameraProxyConfig
 
 __all__ = [
     "AravisCamera",
@@ -11,4 +12,6 @@ __all__ = [
     "CameraManager",
     "HikCamera",
     "HikCameraConfig",
+    "HikCameraProxy",
+    "HikCameraProxyConfig",
 ]

@@ -432,20 +432,46 @@ def run_pipeline(args: argparse.Namespace) -> None:
     else:
         camera_cfg_path = cfg.get("camera.config_path", default="config/camera_config.yaml")
         camera_cfg_manager = ConfigManager(camera_cfg_path)
-        camera_cfg = camera_cfg_manager.get("aravis", expected_type=dict)
         network_cfg = camera_cfg_manager.get("network", default={}, expected_type=dict)
         if network_cfg:
             apply_network_tuning(network_cfg, logger)
-        from vision.camera import AravisCamera  # 延迟导入避免无此依赖时直接崩溃
+        camera_type = str(cfg.get("camera.type", default="aravis")).lower()
 
-        camera = AravisCamera(camera_cfg)
-        if not camera.open():
-            raise RuntimeError("相机打开失败")
-        resolution = cfg.get("camera.resolution")
-        frame_size = (
-            int(getattr(camera, "_width", resolution[0])),
-            int(getattr(camera, "_height", resolution[1])),
-        )
+        if camera_type == "aravis":
+            camera_cfg = camera_cfg_manager.get("aravis", expected_type=dict)
+            from vision.camera import AravisCamera  # 延迟导入避免无此依赖时直接崩溃
+
+            camera = AravisCamera(camera_cfg)
+            if not camera.open():
+                raise RuntimeError("相机打开失败")
+            resolution = cfg.get("camera.resolution")
+            frame_size = (
+                int(getattr(camera, "_width", resolution[0])),
+                int(getattr(camera, "_height", resolution[1])),
+            )
+        elif camera_type == "hikvision_proxy":
+            proxy_cfg = camera_cfg_manager.get("hikvision_proxy", expected_type=dict)
+            socket_path = proxy_cfg.get("socket", "/tmp/hikvision.sock")
+            capture_timeout = float(proxy_cfg.get("timeout", 0.5))
+            connect_timeout = float(proxy_cfg.get("connect_timeout", 2.0))
+            intrinsics_override = proxy_cfg.get("intrinsics")
+            from vision.hikvision_proxy import HikCameraProxy, HikCameraProxyConfig
+
+            proxy_config = HikCameraProxyConfig(
+                socket_path=Path(socket_path),
+                capture_timeout=capture_timeout,
+                connect_timeout=connect_timeout,
+                intrinsics=intrinsics_override if isinstance(intrinsics_override, dict) else None,
+            )
+            camera = HikCameraProxy(proxy_config)
+            if not camera.open():
+                raise RuntimeError("相机代理连接失败")
+            frame_size = (
+                int(cfg.get("camera.resolution")[0]),
+                int(cfg.get("camera.resolution")[1]),
+            )
+        else:
+            raise ConfigError(f"不支持的相机类型: {camera_type}")
 
     model_cfg = cfg.get("model", expected_type=dict)
     detector = YOLODetector(
@@ -577,6 +603,11 @@ def run_pipeline(args: argparse.Namespace) -> None:
                 if frame is None:
                     logger.warning("未获取到图像帧")
                     continue
+                if frame.ndim == 2:
+                    if cv2 is not None:  # type: ignore[truthy-function]
+                        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)  # type: ignore[attr-defined]
+                    else:
+                        frame = np.repeat(frame[:, :, None], 3, axis=2)
                 packet = FramePacket(
                     index=frame_index,
                     timestamp_ms=timestamp_ms,

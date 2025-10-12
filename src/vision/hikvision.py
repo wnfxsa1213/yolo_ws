@@ -108,6 +108,8 @@ class HikCameraConfig:
     adapter_name: Optional[str] = None
     stream_timeout_ms: int = 1000
     stream_buffer_count: int = 4
+    width: Optional[int] = None
+    height: Optional[int] = None
     exposure_us: Optional[float] = None
     gain_db: Optional[float] = None
     intrinsics: Optional[Dict[str, float]] = None
@@ -127,6 +129,11 @@ class HikCameraConfig:
 
         if self.stream_buffer_count <= 0:
             raise ValueError(f"stream_buffer_count 必须 > 0，当前值: {self.stream_buffer_count}")
+
+        if self.width is not None and self.width <= 0:
+            raise ValueError(f"width 必须 > 0，当前值: {self.width}")
+        if self.height is not None and self.height <= 0:
+            raise ValueError(f"height 必须 > 0，当前值: {self.height}")
 
 
 class HikCamera(CameraInterface):
@@ -197,6 +204,7 @@ class HikCamera(CameraInterface):
             self._apply_network_optimisation()
             self._cache_dimensions()
             self._apply_initial_parameters()
+            self._cache_dimensions()
 
             ret = cam.MV_CC_StartGrabbing()
             if not _sdk_status_ok(ret):
@@ -363,8 +371,8 @@ class HikCamera(CameraInterface):
         if self._mv_cam is None or mv is None:
             return
         self._payload_size = self._get_int_feature("PayloadSize") or self._payload_size
-        self._width = self._get_int_feature("Width") or self._width
-        self._height = self._get_int_feature("Height") or self._height
+        self._width = self._get_int_feature("Width") or self._width or (self._config.width or 0)
+        self._height = self._get_int_feature("Height") or self._height or (self._config.height or 0)
         if self._payload_size == 0 and self._width and self._height:
             self._payload_size = self._width * self._height
 
@@ -379,6 +387,14 @@ class HikCamera(CameraInterface):
             ret = self._mv_cam.MV_CC_SetFloatValue("Gain", float(self._config.gain_db))
             if not _sdk_status_ok(ret):
                 logger.debug("初始增益设置失败，错误码 %s", _hex_error(ret))
+        if self._config.width is not None:
+            ret = self._mv_cam.MV_CC_SetIntValue("Width", int(self._config.width))
+            if not _sdk_status_ok(ret):
+                logger.debug("初始 Width 设置失败，错误码 %s", _hex_error(ret))
+        if self._config.height is not None:
+            ret = self._mv_cam.MV_CC_SetIntValue("Height", int(self._config.height))
+            if not _sdk_status_ok(ret):
+                logger.debug("初始 Height 设置失败，错误码 %s", _hex_error(ret))
 
     def _get_int_feature(self, key: str) -> Optional[int]:
         if self._mv_cam is None or mv is None:

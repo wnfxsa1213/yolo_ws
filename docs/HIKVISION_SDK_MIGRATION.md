@@ -219,10 +219,22 @@ class CameraInterface(ABC):
 
 **目标**：在 `mvs-workspace` 内实现 `camera_server.py`，将 `HikCamera` 封装为可复用的取流守护进程。
 
-- [ ] 设计帧传输协议（帧编号、时间戳、像素格式、有效长度、图像数据）。
-- [ ] 提供曝光/增益调节命令通道，统一通过 IPC 下发并回传执行结果。
-- [ ] 选择 IPC 实现（Unix Domain Socket / ZeroMQ / 共享内存），并实现心跳、异常恢复及日志上报。
-- [ ] 编写 supervisor/systemd 配置，确保容器启动后自动拉起服务。
+- [x] 设计帧传输协议（帧编号、时间戳、像素格式、有效长度、图像数据）。
+- [x] 提供曝光/增益调节命令通道，统一通过 IPC 下发并回传执行结果。
+- [x] 选择 IPC 实现（Unix Domain Socket）并实现心跳/异常处理（`--heartbeat` 控制，0 表示禁用）。
+- [x] 提供 supervisor 示例（`scripts/camera_server_supervisor.conf`），配合 `/workspace/logs/` 输出运行日志。
+
+**通信协议草案：**
+- 请求：`HEADER(4s cmd, uint32 length)` + Payload；命令集包含 `PING`（心跳）、`CAPT`（单帧抓取）、`SEXP`（曝光，payload=float64）、`SGAI`（增益，payload=float64）、`STOP`（断开）。
+- 响应：同样以 HEADER 开头，常用响应码：`PONG`、`FRAM`（帧数据，payload=meta + raw）、`OKAY`、`FAIL`、`ERRO`。
+- 帧 meta 结构：`frame_id:uint32 | width:uint32 | height:uint32 | timestamp_ms:float64 | channels:uint8`，其后紧跟原始像素数据（BGR 或 Mono8）。
+- 心跳：客户端需每 `heartbeat_interval` 发送 `PING`，服务端若连续两次超时将主动断开。
+
+**部署说明：**
+- 容器内复制 `scripts/camera_server.py`，并按需放置 supervisor 配置 `scripts/camera_server_supervisor.conf`。
+- supervisor 示例如命令所示，日志输出在 `/workspace/logs/camera_server.*.log`。
+- 启动命令可通过 `--heartbeat` 控制超时（0 表示禁用），默认使用 Unix Socket `/tmp/hikvision.sock`。
+- 运行前需要同步 `vision/` 目录到容器或以挂载方式提供，确保 `MvCameraControl_class` 与 Python 模块一致。
 
 ---
 
@@ -230,19 +242,52 @@ class CameraInterface(ABC):
 
 **目标**：宿主机 `main.py` 通过 `HikCameraProxy` 与容器服务交互，替换原 Aravis 链路。
 
-- [ ] 新增 `camera.backend = "hikvision_proxy"` 配置选项，兼容 Aravis 与本地 HikCamera。
-- [ ] 实现 IPC 客户端，解包容器返回的帧并转换为 `np.ndarray`（BGR 或灰度）。
+- [x] 新增 `camera.type = "hikvision_proxy"` 配置项，可在主配置中切换代理模式。
+- [x] 实现 IPC 客户端（`HikCameraProxy`），可解包帧并转换为 `np.ndarray`（BGR/Mono）。
 - [ ] 梳理 YOLO/TensorRT 前处理，确保输入尺寸与色彩空间保持一致。
 - [ ] 定义超时与重连策略，防止相机异常阻塞主控制循环。
+
+**代理接口草案：**
+- `HikCameraProxy.open()`：建立 Unix Socket 连接，完成握手与版本校验。
+- `HikCameraProxy.capture(timeout)`：发送 `CAPT` 命令，解析 `FRAM` 响应，返回 `(ndarray, timestamp_ms)`。
+- `HikCameraProxy.set_exposure/gain()`：分别发送 `SEXP` / `SGAI` 控制命令，处理 `OKAY/ERRO` 响应。
+- `HikCameraProxy.close()`：发送 `STOP` 后清理资源，并在异常时尝试重连（退避策略）。
+
+**配置示例：**
+```yaml
+# config/system_config.yaml
+camera:
+  type: "hikvision_proxy"
+  config_path: "config/camera_config.yaml"
+  intrinsics_path: "config/camera_intrinsics.yaml"
+  resolution: [1280, 1024]
+
+# config/camera_config.yaml
+hikvision_proxy:
+  socket: "/tmp/hikvision.sock"
+  timeout: 0.5
+  connect_timeout: 2.0
+
+network:
+  interface: "enP8p1s0"
+  host_ip: "192.168.100.1"
+  camera_ip: "192.168.100.10"
+  mtu: 9000
+```
 
 ---
 
 ### 阶段 6：端到端验证与发布 🚀
 
-- [ ] 编写 `scripts/e2e_hikvision_benchmark.py`，测试 FPS、端到端延迟、CPU 占用。
+- [x] 编写 `scripts/e2e_hikvision_benchmark.py` 并输出 FPS/延迟/CPU 统计。
 - [ ] 输出混合架构部署手册：容器构建、宿主机同步 `/opt/MVS`、服务启动顺序。
 - [ ] 对比 Aravis 方案，记录性能与稳定性结论，更新 `docs/PHASE1_SUMMARY_AND_ROADMAP.md`。
 - [ ] 规划 Phase 2：多相机、硬件触发、Web UI/远程监控等扩展路线。
+
+**最新测试（2025-10-12）**
+- server：`python3 scripts/camera_server.py --socket /tmp/hikvision.sock --device-ip 192.168.100.10 --width 640 --height 640 --heartbeat 0 --log DEBUG`
+- client：`python3 scripts/e2e_hikvision_benchmark.py --socket /tmp/hikvision.sock --duration 10 --timeout 0.5 --warmup 3`
+- 输出：FPS ≈ 54.12、平均延迟 ≈ 18.47 ms（最小 17.26 / 最大 19.94 / P95 19.07 / P99 19.33）、进程 CPU ≈ 4.5%、丢帧率 ≈ 0.00%（分辨率 640×640，Mono8）
 
 ---
 ### 附录：本地集成参考（历史方案）
@@ -438,6 +483,11 @@ python scripts/benchmark_camera.py --backend hikvision --duration 60
 - [ ] 符合 SOLID 原则
 
 ---
+
+## ⚠️ 风险与缓解
+
+- **单点故障（容器服务崩溃）**：通过 `scripts/camera_server_supervisor.conf` 接入 supervisor/systemd，配合客户端退避重连与健康检查，降低停机风险。
+- **IPC 延迟抖动**：若发现 P95/P99 延迟上升，可考虑 pinned CPU affinity、实时调度，或升级为共享内存/ZeroMQ Transport。
 
 ## 🚀 九、后续扩展
 
