@@ -89,13 +89,13 @@ debug:
 
 ### camera_config.yaml (简化版)
 ```yaml
-hikvision:
-  exposure_time: 5000  # us
-  gain: 8.0
-  trigger_mode: "off"
-  pixel_format: "RGB8"
-  gamma: 1.0
-  sharpness: 128
+aravis:
+  device_id: null
+  pixel_format: "BayerGB8"
+  frame_rate: 50.0
+  exposure_us: 3500
+  gain_db: 4.0
+  trigger_mode: "Off"
 ```
 
 ### camera_intrinsics.yaml (示例)

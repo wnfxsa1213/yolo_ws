@@ -2678,15 +2678,15 @@ project:
   log_level: "INFO"
 
 camera:
-  type: "hikvision"
+  type: "aravis"
   config_path: "config/camera_config.yaml"
-  resolution: [1920, 1080]
-  fps: 60
+  resolution: [1280, 1024]
+  fps: 50
   intrinsics:
-    fx: 1000.0
-    fy: 1000.0
-    cx: 960.0
-    cy: 540.0
+    fx: 1024.0
+    fy: 1024.0
+    cx: 640.0
+    cy: 512.0
 
 model:
   engine_path: "models/yolov8n_fp16.engine"
@@ -2727,16 +2727,13 @@ debug:
 
 ```yaml
 # config/camera_config.yaml
-hikvision:
-  exposure_time: 5000  # us
-  gain: 8.0
-  trigger_mode: "off"
-  pixel_format: "RGB8"
-
-  # 高级参数
-  gamma: 1.0
-  sharpness: 128
-  black_level: 0
+aravis:
+  device_id: null
+  pixel_format: "BayerGB8"
+  frame_rate: 50.0
+  exposure_us: 3500
+  gain_db: 4.0
+  trigger_mode: "Off"
 ```
 
 ---

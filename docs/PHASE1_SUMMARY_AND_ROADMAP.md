@@ -16,6 +16,9 @@
 
 ---
 
+> ⚠️ 本文档涉及的海康 MVS SDK 架构与实现已迁移至 `archive/hikvision-sdk` 分支，当前主线仅保留 Aravis 相机方案。若需参考具体代码，请切换至该分支。
+
+---
 ## 📊 执行摘要
 
 ### 项目概述
@@ -29,7 +32,7 @@
 - ✅ **代码规模**：2230+ 行高质量 Python/C++ 代码
 - ✅ **模块完成**：5个核心模块全部实现
 - ✅ **性能达标**：YOLO推理 ~7ms, 端到端延迟 ~32ms
-- ✅ **混合架构**：HikCameraProxy + camera_server 已经串联，支持 640×640 采集与基准测试
+- ✅ **混合架构（已迁移至 archive/hikvision-sdk 分支）**：HikCameraProxy + camera_server 已经串联，支持 640×640 采集与基准测试
 ✅ **工具链完善**：GUI工具、测试脚本、集成测试框架
 - ⚠️ **待收尾**：长时间稳定性测试、文档更新
 
@@ -2306,7 +2309,7 @@ Phase 2优化目标:
 ✅ **TensorRT优化** - YOLOv8-nano FP16引擎，~7ms推理
 ✅ **指令平滑机制** - CommandSmoother实现丢失保持与去抖
 ✅ **工具链完善** - GUI模型管理、测试脚本、集成测试框架
-✅ **Hikvision混合架构** - camera_server + HikCameraProxy 联调完成，FPS≈45、延迟≈18ms，性能优于 Aravis
+✅ **Hikvision混合架构（已迁移至 archive/hikvision-sdk 分支）** - camera_server + HikCameraProxy 联调完成，FPS≈45、延迟≈18ms，性能优于 Aravis
 ✅ **设计原则落地** - SOLID/KISS/DRY/YAGNI严格执行
 
 ### Phase 2-4 路线清晰

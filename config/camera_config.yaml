@@ -63,12 +63,6 @@ aravis:
   chunk_selectors: []                # 需要输出的 Chunk 名称，如 ["Timestamp", "LineStatusAll"]
   stats_log_interval: 1.0            # 采集统计打印周期（秒），0 表示不打印
 
-hikvision_proxy:
-  socket: "/tmp/hikvision.sock"      # camera_server 提供的 Unix Socket
-  timeout: 0.5                       # 单帧采集超时（秒）
-  connect_timeout: 2.0               # 建连超时（秒）
-  intrinsics: null                   # 可选：直接内嵌内参，优先级高于 camera.intrinsics_path
-
 network:
   interface: "enP8p1s0"              # 主机使用的物理网卡名，ip addr 可查看
   host_ip: "192.168.100.1"           # 主机静态 IP（需要自行通过 netplan/NetworkManager 配置）

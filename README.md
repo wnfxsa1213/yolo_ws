@@ -21,16 +21,15 @@
 - ✅ **目标追踪**: ByteTrack算法（待实现）
 - ✅ **云台控制**: 与STM32H750双向通信
 - ✅ **遥控器接管**: ELRS接收机安全机制
-- ✅ **容器化相机驱动**: Docker隔离海康MVS SDK，IPC通信（Unix Socket）
-
 ### 技术亮点
 - **高性能**: 142 FPS检测速度，<32ms端到端延迟，54 FPS相机采集 @ 18ms IPC延迟
 - **异构计算**: Python应用层 + C++ CUDA算法层
 - **GPU优化**: 继承主环境GPU库（PyTorch 2.5.0, OpenCV 4.10.0）
 - **实时通信**: 460800波特率串口 + CRSF协议
-- **混合架构**: 容器封装闭源SDK，宿主机运行业务逻辑，进程隔离提高稳定性
 
 ---
+
+> ⚠️ 2025-10-15 起，海康威视 MVS SDK 迁移暂缓，当前主线仅提供 Aravis 驱动。海康相关代码与文档已保存至 `archive/hikvision-sdk` 分支。
 
 ## 📁 项目结构
 
@@ -39,9 +38,7 @@ yolo_ws/
 ├── .venv/                      # 虚拟环境（--system-site-packages）
 ├── src/                        # 源代码目录
 │   ├── vision/                # 视觉模块
-│   │   ├── camera.py          # 相机接口与Aravis实现
-│   │   ├── hikvision.py       # 海康MVS SDK直接调用（容器内）
-│   │   └── hikvision_proxy.py # IPC代理客户端（宿主机）
+│   │   └── camera.py          # 相机接口与 Aravis 实现
 │   ├── algorithms/            # C++算法模块（YOLO、追踪、坐标转换）
 │   ├── serial_comm/           # 串口通信模块
 │   ├── utils/                 # 工具模块（日志、配置、性能）
@@ -51,8 +48,6 @@ yolo_ws/
 │   ├── camera_config.yaml     # 相机参数
 │   └── camera_intrinsics.yaml # 相机内参（标定后生成）
 ├── scripts/                    # 工具脚本
-│   ├── camera_server.py       # 海康相机服务端（容器内运行）
-│   ├── e2e_hikvision_benchmark.py  # 端到端性能测试
 │   ├── export_onnx.py         # 模型导出
 │   ├── build_engine.py        # TensorRT构建
 │   ├── test_camera.py         # 相机测试
@@ -63,7 +58,6 @@ yolo_ws/
 ├── tests/                      # 测试代码
 ├── logs/                       # 日志输出
 ├── docs/                       # 技术文档
-│   ├── HIKVISION_SDK_MIGRATION.md     # 海康SDK容器化迁移文档 ⭐️
 │   ├── System_Architecture_V2.md      # 系统整体架构
 │   ├── CAMERA_GIGE_SETUP.md           # GigE相机网络配置
 │   ├── Jetson_Development.md          # Jetson开发指南
@@ -81,7 +75,7 @@ yolo_ws/
 
 **硬件：**
 - Jetson Orin NX Super 16GB
-- 海康威视 MV-CU013-A0GC GigE相机（通过MVS SDK驱动，容器化部署）
+- GigE Vision 相机（Aravis 兼容）
 - STM32H750VBT6主控板
 - NVMe SSD 256GB+
 
@@ -167,22 +161,11 @@ python scripts/build_engine.py --onnx yolov8n.onnx --fp16
 
 ### 测试相机
 
-**容器化模式（推荐）：**
-```bash
-# 1. 启动容器内相机服务
-docker exec -it mvs-workspace bash
-python3 scripts/camera_server.py --socket /tmp/hikvision.sock \
-    --device-ip 192.168.100.10 --width 640 --height 640 --heartbeat 0
-
-# 2. 宿主机测试连接
-python scripts/e2e_hikvision_benchmark.py --socket /tmp/hikvision.sock \
-    --duration 10 --timeout 0.5 --warmup 3
-```
-
-**直接模式（开发调试）：**
 ```bash
 python scripts/test_camera.py --config config/camera_config.yaml
 ```
+
+> 提示：请确保系统已安装 `gir1.2-aravis-0.8` 以及相机网络参数配置正确。
 
 ### 测试串口（第一阶段Sprint 3）
 ```bash
@@ -198,7 +181,7 @@ python src/main.py --config config/system_config.yaml
 **预期输出：**
 ```
 [INFO] 系统初始化...
-[INFO] 相机连接成功: 1920x1080 @ 60fps
+[INFO] 相机连接成功: 640x640 @ 50fps
 [INFO] YOLO引擎加载成功: yolov8n_fp16.engine
 [INFO] 串口连接成功: /dev/ttyTHS1 @ 460800
 [INFO] 主循环启动...
@@ -222,8 +205,6 @@ python src/main.py --config config/system_config.yaml
 | **GPU占用** | ~45% | 1024 CUDA cores |
 | **内存占用** | ~1.8GB / 16GB | 含模型和缓冲 |
 | **功耗** | ~12W | @ 15W功耗模式 |
-
-### 海康相机采集性能（容器化IPC架构）
 
 | 指标 | 数值 | 说明 |
 |------|------|------|
@@ -360,26 +341,22 @@ dpkg -l | grep tensorrt
 python scripts/build_engine.py --onnx model.onnx --fp16
 ```
 
-### 5. 海康相机连接失败（容器模式）
+### 5. Aravis 相机连接失败
 
-**现象：** `ConnectionRefusedError: [Errno 111] Connection refused`
+**现象：** `capture()` 返回 `(None, 0.0)` 或 `Aravis` 抛出超时异常
 
-**原因：** camera_server 未启动或socket路径不匹配
+**原因：** 相机网络配置不正确或 `arv-camera-test` 无法发现设备
 
 **解决：**
 ```bash
-# 1. 检查服务端是否运行
-docker exec mvs-workspace ps aux | grep camera_server
+# 1. 使用 Aravis 工具检查相机
+arv-tool-0.8 gvcp discover
 
-# 2. 检查socket文件
-ls -l /tmp/hikvision.sock
+# 2. 检查宿主机到相机的网络连通
+ping 192.168.100.10
 
-# 3. 检查容器日志
-docker exec mvs-workspace tail -f /workspace/logs/camera_server.log
-
-# 4. 手动启动服务端
-docker exec -it mvs-workspace python3 scripts/camera_server.py \
-    --socket /tmp/hikvision.sock --device-ip 192.168.100.10 --heartbeat 0
+# 3. 确认网卡 MTU / ring buffer 设置
+sudo ethtool -g enP8p1s0
 ```
 
 ### 6. 相机采集超时
@@ -433,27 +410,14 @@ proxy.capture(timeout=2.0)
 
 ## 📝 最新进展
 
-### 2025-10-12 - 海康SDK容器化迁移完成 ✅
+### 2025-10-15 - 海康 SDK 工作暂缓 ⏸️
 
-**已完成：**
-- ✅ `HikCamera` 类实现（完整MVS SDK集成）
-- ✅ `HikCameraProxy` IPC客户端（Unix Socket通信）
-- ✅ `camera_server.py` 容器服务端（事件驱动架构）
-- ✅ 端到端性能测试（54 FPS @ 18ms延迟，0%丢帧）
-- ✅ 完整的迁移文档（详见 `docs/HIKVISION_SDK_MIGRATION.md`）
-
-**架构优势：**
-- 🔒 **隔离性**：容器封装闭源SDK，避免污染宿主环境
-- 🚀 **性能**：IPC损耗仅1-5%，54 FPS稳定采集
-- 🛡️ **稳定性**：进程隔离，相机崩溃不影响主程序
-- 📦 **可维护性**：SDK版本独立管理，易于升级
-
-**下一步：**
-- [ ] 集成到主程序 `main.py`
-- [ ] 添加自动重连机制
-- [ ] 性能对比测试（Aravis vs MVS SDK）
+- ⏸️ 海康相关代码、脚本与文档已迁移至 `archive/hikvision-sdk` 分支备份
+- ✅ 主线配置切回 `camera.type = "aravis"`，仅保留开源驱动实现
+- 📚 README、配置示例与开发文档同步更新，指向新的分支说明
+- 🧹 移除容器服务端、代理客户端及相关测试脚本，避免主线误用
 
 ---
 
-**最后更新：** 2025-10-12
-**项目状态：** 🚧 Phase 1 开发中 - 海康SDK迁移已完成 ✅
+**最后更新：** 2025-10-15
+**项目状态：** 🚧 Phase 1 开发中 - 主线聚焦 Aravis 相机方案
